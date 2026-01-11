@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "wienerlinien": {
+      "version": "1.0.0",
+      "installedAt": 1768133199965
+    },
+    "a-nach-b": {
+      "version": "1.0.0",
+      "installedAt": 1768134302034
+    },
+    "tavily-search": {
+      "version": "1.0.0",
+      "installedAt": 1768135542031
+    }
+  }
+}
