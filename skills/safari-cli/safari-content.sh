@@ -3,35 +3,50 @@
 # Extract page content from Safari as text/markdown
 # Uses Safari's Reader mode when available, falls back to JavaScript extraction
 
-URL="$1"
+URL=""
+NO_READER=false
 
 show_usage() {
-    echo "Usage: safari-content.sh [url]"
+    echo "Usage: safari-content.sh [options] [url]"
     echo ""
     echo "Extracts readable content from Safari's current tab."
     echo "Uses Safari Reader mode when available for cleaner output."
     echo "If URL is provided, navigates to it first."
     echo ""
+    echo "Options:"
+    echo "  --no-reader    Skip Reader mode, use JavaScript extraction"
+    echo "  -h, --help     Show this help message"
+    echo ""
     echo "Examples:"
     echo "  safari-content.sh                              # Extract from current tab"
     echo "  safari-content.sh https://example.com          # Navigate and extract"
+    echo "  safari-content.sh --no-reader https://docs.example.com  # Force JS extraction"
 }
 
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    show_usage
-    exit 0
-fi
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-reader)
+            NO_READER=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            URL="$1"
+            shift
+            ;;
+    esac
+done
 
 # Navigate if URL provided
 if [ -n "$URL" ]; then
     osascript -e "
         tell application \"Safari\"
             activate
-            if (count of windows) = 0 then
-                make new document with properties {URL:\"$URL\"}
-            else
-                set URL of current tab of window 1 to \"$URL\"
-            end if
+            open location \"$URL\"
         end tell
     " 2>/dev/null
     
@@ -43,7 +58,9 @@ if [ -n "$URL" ]; then
         READY=$(osascript -e '
             tell application "Safari"
                 try
-                    return do JavaScript "document.readyState" in current tab of window 1
+                    tell window 1
+                        return do JavaScript "document.readyState" in current tab
+                    end tell
                 on error
                     return "loading"
                 end try
@@ -63,8 +80,13 @@ PAGE_INFO=$(osascript -e '
         if (count of windows) = 0 then
             return "error:No Safari window open"
         end if
-        set pageURL to URL of current tab of window 1
-        set pageTitle to name of current tab of window 1
+        tell window 1
+            if (count of tabs) = 0 then
+                return "error:No tabs open in Safari"
+            end if
+            set pageURL to URL of current tab
+            set pageTitle to name of current tab
+        end tell
         return pageURL & "|||" & pageTitle
     end tell
 ' 2>&1)
@@ -77,7 +99,9 @@ fi
 PAGE_URL="${PAGE_INFO%%|||*}"
 PAGE_TITLE="${PAGE_INFO#*|||}"
 
-# Try to use Safari Reader mode
+# Try to use Safari Reader mode (unless --no-reader is set)
+READER_CONTENT="READER_NOT_AVAILABLE"
+if [[ "$NO_READER" == "false" ]]; then
 READER_CONTENT=$(osascript -e '
     tell application "Safari"
         activate
@@ -146,9 +170,10 @@ READER_CONTENT=$(osascript -e '
         end tell
     end tell
 ' 2>&1)
+fi
 
 # Check if Reader extraction succeeded
-if [[ "$READER_CONTENT" != "READER_NOT_AVAILABLE" ]] && [[ "$READER_CONTENT" != READER_ERROR:* ]] && [[ -n "$READER_CONTENT" ]]; then
+if [[ "$NO_READER" == "false" ]] && [[ "$READER_CONTENT" != "READER_NOT_AVAILABLE" ]] && [[ "$READER_CONTENT" != READER_ERROR:* ]] && [[ -n "$READER_CONTENT" ]]; then
     echo "URL: $PAGE_URL"
     echo "Title: $PAGE_TITLE"
     echo ""

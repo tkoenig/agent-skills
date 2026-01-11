@@ -57,9 +57,22 @@ For more screenshot options (Retina, specific windows, etc.), see the `peekaboo`
 ```bash
 {baseDir}/safari-content.sh
 {baseDir}/safari-content.sh https://example.com
+{baseDir}/safari-content.sh --no-reader https://docs.example.com
 ```
 
 Extract readable content as markdown. Optionally navigate to URL first.
+
+Uses Safari's native **Reader mode** when available for clean article extraction. Falls back to JavaScript DOM extraction when Reader is unavailable.
+
+**Options:**
+- `--no-reader` - Skip Reader mode, use JavaScript extraction instead
+
+**When to use `--no-reader`:**
+- Documentation sites (API docs, technical references)
+- Pages with code snippets or tables that Reader simplifies too aggressively
+- Sites where Reader strips important inline elements
+
+Reader mode works best for articles and blog posts. For technical documentation (e.g., Tailwind CSS docs, MDN), use `--no-reader` to preserve code examples and technical details.
 
 ## Tab Management
 
