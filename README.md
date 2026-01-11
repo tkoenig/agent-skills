@@ -4,15 +4,24 @@ Custom skills for [pi-coding-agent](https://github.com/mariozechner/pi-coding-ag
 
 ## Installation
 
-Symlink skills to `~/.pi/agent/skills/`:
-
 ```bash
-ln -s /Users/tom/Development/tkoenig/agent-skills/daisyui ~/.pi/agent/skills/daisyui
-ln -s /Users/tom/Development/tkoenig/agent-skills/github ~/.pi/agent/skills/github
-ln -s /Users/tom/Development/tkoenig/agent-skills/hcloud ~/.pi/agent/skills/hcloud
-ln -s /Users/tom/Development/tkoenig/agent-skills/peekaboo ~/.pi/agent/skills/peekaboo
-ln -s /Users/tom/Development/tkoenig/agent-skills/safari-cli ~/.pi/agent/skills/safari-cli
+./bin/install
 ```
+
+This symlinks all skills to `~/.pi/agent/skills/` and installs any ClawdHub skills listed in `Clawdfile`.
+
+## ClawdHub Skills
+
+Add skills from [ClawdHub](https://clawdhub.com/) to `Clawdfile`:
+
+```
+# ClawdHub skills to install
+caldav-calendar
+slack
+trello
+```
+
+Run `./bin/clawdsync` to install/update just ClawdHub skills, or `./bin/install` to sync everything.
 
 ## Skills
 

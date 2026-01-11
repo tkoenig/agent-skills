@@ -1,0 +1,30 @@
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CLAWDHUB_DIR="$SCRIPT_DIR/clawdhub"
+SKILLS_DIR=~/.pi/agent/skills
+CLAWDFILE="$SCRIPT_DIR/Clawdfile"
+
+mkdir -p "$CLAWDHUB_DIR"
+
+# Read skills from Clawdfile
+while IFS= read -r line || [[ -n "$line" ]]; do
+  # Skip empty lines and comments
+  [[ -z "$line" || "$line" =~ ^# ]] && continue
+  skill="${line%%#*}"  # Remove inline comments
+  skill="${skill// /}" # Trim whitespace
+  [[ -z "$skill" ]] && continue
+  
+  echo "Installing $skill..."
+  npx clawdhub@latest install "$skill" --workdir "$CLAWDHUB_DIR" 2>/dev/null || true
+done < "$CLAWDFILE"
+
+echo "Updating all ClawdHub skills..."
+npx clawdhub@latest update --all --workdir "$CLAWDHUB_DIR"
+
+echo ""
+echo "Symlinking to $SKILLS_DIR..."
+for skill in "$CLAWDHUB_DIR"/skills/*/; do
+  [[ -f "$skill/SKILL.md" ]] && ln -sf "$skill" "$SKILLS_DIR/"
+done
+
+echo "Done!"
