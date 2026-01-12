@@ -1,0 +1,56 @@
+#!/bin/bash
+# Wrapper for sentry-cli that finds .sentryclirc in parent directories
+# This allows per-org/project auth tokens by placing .sentryclirc files
+# in parent directories (e.g., ~/Development/wearedevs/.sentryclirc)
+
+# Walk up from current directory looking for .sentryclirc
+find_config() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.sentryclirc" ]]; then
+            echo "$dir/.sentryclirc"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+# Find the nearest .sentryclirc
+CONFIG_FILE=$(find_config)
+
+if [[ -n "$CONFIG_FILE" ]]; then
+    # Extract auth token if present in the found config
+    AUTH_TOKEN=$(grep -A1 '^\[auth\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^token\s*=' | sed 's/^token\s*=\s*//')
+    
+    if [[ -n "$AUTH_TOKEN" ]]; then
+        export SENTRY_AUTH_TOKEN="$AUTH_TOKEN"
+    fi
+    
+    # Extract org if present
+    ORG=$(grep -A2 '^\[defaults\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^org\s*=' | sed 's/^org\s*=\s*//')
+    
+    # Extract project if present  
+    PROJECT=$(grep -A2 '^\[defaults\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^project\s*=' | sed 's/^project\s*=\s*//')
+fi
+
+# Commands that accept --org and --project flags (as subcommand flags)
+SUBCOMMAND="${1:-}"
+COMMANDS_WITH_ORG_PROJECT="issues|releases|deploys|repos|monitors|events|sourcemaps|debug-files|upload-proguard"
+
+# Build args: subcommand first, then org/project flags, then rest of args
+if [[ "$SUBCOMMAND" =~ ^($COMMANDS_WITH_ORG_PROJECT)$ ]]; then
+    shift  # Remove subcommand from $@
+    ARGS=("$SUBCOMMAND")
+    
+    if [[ -n "$ORG" ]] && ! [[ " $* " =~ " -o " || " $* " =~ " --org " ]]; then
+        ARGS+=("--org" "$ORG")
+    fi
+    if [[ -n "$PROJECT" ]] && ! [[ " $* " =~ " -p " || " $* " =~ " --project " ]]; then
+        ARGS+=("--project" "$PROJECT")
+    fi
+    
+    exec sentry-cli "${ARGS[@]}" "$@"
+else
+    exec sentry-cli "$@"
+fi
