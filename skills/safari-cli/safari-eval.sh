@@ -14,27 +14,15 @@ if [ -z "$CODE" ]; then
     exit 1
 fi
 
-# Check if Safari has Allow JavaScript from Apple Events enabled
-RESULT=$(osascript -e "
-    tell application \"Safari\"
-        if (count of windows) = 0 then
-            return \"error:No Safari window open\"
-        end if
-        if (count of tabs of window 1) = 0 then
-            return \"error:No tabs open\"
-        end if
-        try
-            set jsResult to do JavaScript \"$CODE\" in current tab of window 1
-            return jsResult
-        on error errMsg
-            return \"error:\" & errMsg
-        end try
-    end tell
-" 2>&1)
+# Use base64 to safely pass any JavaScript to AppleScript (avoids quote escaping issues)
+# Wrap in a function that handles undefined results and errors
+WRAPPED="(function(){try{var r=eval(atob('$(printf '%s' "$CODE" | base64)'));return r===undefined?'__undefined__':JSON.stringify(r)}catch(e){return '__error__:'+e.message}})()"
 
-if [[ "$RESULT" == error:* ]]; then
-    ERROR_MSG="${RESULT#error:}"
-    if [[ "$ERROR_MSG" == *"not allowed"* ]] || [[ "$ERROR_MSG" == *"execution was blocked"* ]]; then
+RESULT=$(osascript -e "tell application \"Safari\" to do JavaScript \"$WRAPPED\" in front document" 2>&1)
+
+# Check for AppleScript-level errors
+if [[ $? -ne 0 ]]; then
+    if [[ "$RESULT" == *"not allowed"* ]] || [[ "$RESULT" == *"execution was blocked"* ]]; then
         echo "✗ JavaScript execution blocked"
         echo ""
         echo "Enable JavaScript from Apple Events:"
@@ -44,10 +32,22 @@ if [[ "$RESULT" == error:* ]]; then
         echo "If Develop menu is hidden:"
         echo "  Safari > Settings > Advanced > Show features for web developers"
         exit 1
+    elif [[ "$RESULT" == *"No document"* ]] || [[ "$RESULT" == *"Can't get document"* ]]; then
+        echo "✗ No Safari window open"
+        exit 1
     else
-        echo "✗ $ERROR_MSG"
+        echo "✗ $RESULT"
         exit 1
     fi
+fi
+
+# Handle JS-level results
+if [[ "$RESULT" == "__undefined__" ]]; then
+    echo "undefined"
+elif [[ "$RESULT" == __error__:* ]]; then
+    echo "✗ JavaScript error: ${RESULT#__error__:}"
+    exit 1
 else
-    echo "$RESULT"
+    # Parse JSON result back to readable format
+    echo "$RESULT" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()); print(v if isinstance(v,str) else json.dumps(v,indent=2))" 2>/dev/null || echo "$RESULT"
 fi
