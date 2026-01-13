@@ -7,15 +7,28 @@ description: "Manage Sentry issues using sentry-cli and the Sentry API. List, re
 
 Manage Sentry issues via the `sentry` wrapper script and the REST API.
 
+## Important: Script Location
+
+The `sentry` wrapper script is located in this skill's directory at `scripts/sentry`. 
+
+**First, locate this skill directory** by finding where this SKILL.md file is loaded from (check the path shown when reading this file), then use the script relative to that location.
+
+For example, if this skill is at `/path/to/skills/sentry/SKILL.md`, run:
+```bash
+/path/to/skills/sentry/scripts/sentry <command>
+```
+
 ## Quick Reference
 
 ```bash
-{baseDir}/scripts/sentry config                              # Show current config
-{baseDir}/scripts/sentry projects                            # List available projects
-{baseDir}/scripts/sentry issues list --query "is:unresolved" # List open issues
-{baseDir}/scripts/sentry issues resolve --id <ID>            # Resolve an issue
-{baseDir}/scripts/sentry issues mute --id <ID>               # Mute an issue
+<skill-dir>/scripts/sentry config                              # Show current config
+<skill-dir>/scripts/sentry projects                            # List available projects
+<skill-dir>/scripts/sentry issues list --query "is:unresolved" # List open issues
+<skill-dir>/scripts/sentry issues resolve --id <ID>            # Resolve an issue
+<skill-dir>/scripts/sentry issues mute --id <ID>               # Mute an issue
 ```
+
+Replace `<skill-dir>` with the actual path to this skill's directory.
 
 ## Setup
 
@@ -54,6 +67,8 @@ project=project-1
 ```
 
 ### Verify Setup
+
+In the examples below, `sentry` refers to `<skill-dir>/scripts/sentry`.
 
 ```bash
 # Show current configuration (wrapper command)
