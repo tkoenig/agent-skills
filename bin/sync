@@ -1,0 +1,77 @@
+#!/bin/bash
+# Sync skills based on config.yml
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SKILLS_DIR=~/.pi/agent/skills
+CONFIG="$SCRIPT_DIR/config.yml"
+
+if [[ ! -f "$CONFIG" ]]; then
+  echo "Error: config.yml not found"
+  exit 1
+fi
+
+# Parse YAML list
+parse_yaml_list() {
+  local key="$1"
+  awk -v key="$key" '
+    $0 ~ "^"key":" { in_list=1; next }
+    in_list && /^[a-z_]+:/ { exit }
+    in_list && /^  - / { gsub(/^  - /, ""); gsub(/#.*/, ""); gsub(/[[:space:]]+$/, ""); if ($0) print }
+  ' "$CONFIG"
+}
+
+mkdir -p "$SKILLS_DIR"
+
+# First, download ClawdHub skills
+echo "Downloading ClawdHub skills..."
+"$SCRIPT_DIR/bin/clawdsync"
+
+echo ""
+echo "Syncing global skills..."
+
+# Collect which skills should exist
+declare -a expected_skills
+
+for skill in $(parse_yaml_list "global_skills"); do
+  # Check local skills first
+  skill_path="$SCRIPT_DIR/skills/$skill"
+  if [[ -f "$skill_path/SKILL.md" ]]; then
+    ln -sf "$skill_path" "$SKILLS_DIR/"
+    echo "  + $skill"
+    expected_skills+=("$skill")
+    continue
+  fi
+  
+  # Then check ClawdHub skills
+  skill_path="$SCRIPT_DIR/clawdhub/skills/$skill"
+  if [[ -f "$skill_path/SKILL.md" ]]; then
+    ln -sf "$skill_path" "$SKILLS_DIR/"
+    echo "  + $skill (clawdhub)"
+    expected_skills+=("$skill")
+    continue
+  fi
+  
+  echo "  ? $skill (not found, skipping)"
+done
+
+# Remove skills not in config
+echo ""
+echo "Cleaning up..."
+for link in "$SKILLS_DIR"/*/; do
+  [[ ! -L "${link%/}" ]] && continue
+  skill_name=$(basename "$link")
+  
+  # Check if skill is in expected list
+  found=false
+  for expected in "${expected_skills[@]}"; do
+    [[ "$expected" == "$skill_name" ]] && found=true && break
+  done
+  
+  if [[ "$found" == false ]]; then
+    rm "$SKILLS_DIR/$skill_name"
+    echo "  - $skill_name"
+  fi
+done
+
+echo ""
+echo "Done!"

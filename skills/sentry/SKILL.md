@@ -7,43 +7,63 @@ description: "Manage Sentry issues using sentry-cli and the Sentry API. List, re
 
 Manage Sentry issues via the `sentry` wrapper script and the REST API.
 
+## Quick Reference
+
+```bash
+{baseDir}/scripts/sentry config                              # Show current config
+{baseDir}/scripts/sentry projects                            # List available projects
+{baseDir}/scripts/sentry issues list --query "is:unresolved" # List open issues
+{baseDir}/scripts/sentry issues resolve --id <ID>            # Resolve an issue
+{baseDir}/scripts/sentry issues mute --id <ID>               # Mute an issue
+```
+
 ## Setup
 
-The wrapper script at `./scripts/sentry` wraps `sentry-cli` and finds `.sentryclirc` in parent directories, enabling per-org/project tokens.
-
-Add to your PATH or create an alias:
-```bash
-alias sentry='/path/to/skills/sentry/scripts/sentry'
-```
+The wrapper script wraps `sentry-cli` and finds `.sentryclirc` in parent directories, enabling per-org/project tokens.
 
 ### Directory-Based Config
 
-Place `.sentryclirc` files in parent directories for different orgs:
+Place `.sentryclirc` files in parent directories for different orgs. Configs are **merged** from root to current directory, so you can set org-wide defaults and override per-project:
 
 ```
 ~/Development/
 ├── org-a/
-│   ├── .sentryclirc          # org-a token
+│   ├── .sentryclirc          # org-a token + org name
 │   ├── project-1/
+│   │   └── .sentryclirc      # just: project=project-1
 │   └── project-2/
+│       └── .sentryclirc      # just: project=project-2
 └── org-b/
-    ├── .sentryclirc          # org-b token
+    ├── .sentryclirc          # org-b token + org name
     └── project-3/
 ```
 
-Each `.sentryclirc` can contain both auth and defaults:
+Parent config (e.g., `~/Development/org-a/.sentryclirc`):
 ```ini
 [auth]
 token=sntryu_xxx
 
 [defaults]
 org=my-org
-project=my-project
 ```
 
-Verify setup:
+Project-specific override (e.g., `project-1/.sentryclirc`):
+```ini
+[defaults]
+project=project-1
+```
+
+### Verify Setup
+
 ```bash
+# Show current configuration (wrapper command)
+sentry config
+
+# Verify token works with Sentry
 sentry info
+
+# List available projects in your org
+sentry projects
 ```
 
 ## List Issues
@@ -201,4 +221,56 @@ sentry --help
 sentry issues --help
 sentry issues list --help
 sentry issues resolve --help
+```
+
+## Troubleshooting
+
+### "Invalid token" or 401 Errors
+
+Check your configuration:
+```bash
+sentry config
+```
+
+Verify the token works:
+```bash
+sentry info
+```
+
+If this fails, your token may be expired or invalid. Generate a new one at:
+https://sentry.io/settings/account/api/auth-tokens/
+
+### "Project does not exist" Errors
+
+The project slug in your `.sentryclirc` may not match the actual Sentry project.
+
+List available projects:
+```bash
+sentry projects
+```
+
+Then update your `.sentryclirc` with the correct project slug.
+
+### Config Not Being Found
+
+The wrapper walks up from your current directory looking for `.sentryclirc`. Make sure:
+
+1. You're in a subdirectory of where `.sentryclirc` is located
+2. The file is named exactly `.sentryclirc` (not `.sentrycli.rc` etc.)
+3. The INI format is correct:
+
+```ini
+[auth]
+token=sntryu_xxx
+
+[defaults]
+org=my-org
+project=my-project
+```
+
+### Debug Mode
+
+For verbose output, add `--log-level=debug`:
+```bash
+sentry --log-level=debug issues list
 ```

@@ -3,39 +3,137 @@
 # This allows per-org/project auth tokens by placing .sentryclirc files
 # in parent directories (e.g., ~/Development/wearedevs/.sentryclirc)
 
-# Walk up from current directory looking for .sentryclirc
-find_config() {
+set -euo pipefail
+
+# Parse INI-style config file and extract a value from a section
+# Usage: parse_ini_value <file> <section> <key>
+parse_ini_value() {
+    local file="$1" section="$2" key="$3"
+    local in_section=false
+    
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// /}" ]] && continue
+        
+        # Check for section header
+        if [[ "$line" =~ ^\[([^]]+)\] ]]; then
+            if [[ "${BASH_REMATCH[1]}" == "$section" ]]; then
+                in_section=true
+            else
+                in_section=false
+            fi
+            continue
+        fi
+        
+        # Extract key=value if in the right section
+        if $in_section && [[ "$line" =~ ^[[:space:]]*${key}[[:space:]]*=[[:space:]]*(.+)[[:space:]]*$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return 0
+        fi
+    done < "$file"
+    return 1
+}
+
+# Find all .sentryclirc files from current dir up to root (nearest first)
+find_all_configs() {
     local dir="$PWD"
     while [[ "$dir" != "/" ]]; do
         if [[ -f "$dir/.sentryclirc" ]]; then
             echo "$dir/.sentryclirc"
-            return 0
         fi
         dir="$(dirname "$dir")"
     done
-    return 1
 }
 
-# Find the nearest .sentryclirc
-CONFIG_FILE=$(find_config)
+# Collect all config files (nearest first)
+CONFIG_FILES=()
+while IFS= read -r line; do
+    CONFIG_FILES+=("$line")
+done < <(find_all_configs)
 
-if [[ -n "$CONFIG_FILE" ]]; then
-    # Extract auth token if present in the found config
-    AUTH_TOKEN=$(grep -A1 '^\[auth\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^token\s*=' | sed 's/^token\s*=\s*//')
+# Merge configs: start from furthest (root) and override with nearer values
+AUTH_TOKEN=""
+ORG=""
+PROJECT=""
+
+for (( i=${#CONFIG_FILES[@]}-1; i>=0; i-- )); do
+    cfg="${CONFIG_FILES[i]}"
     
-    if [[ -n "$AUTH_TOKEN" ]]; then
-        export SENTRY_AUTH_TOKEN="$AUTH_TOKEN"
+    val=$(parse_ini_value "$cfg" "auth" "token" 2>/dev/null) || true
+    [[ -n "$val" ]] && AUTH_TOKEN="$val"
+    
+    val=$(parse_ini_value "$cfg" "defaults" "org" 2>/dev/null) || true
+    [[ -n "$val" ]] && ORG="$val"
+    
+    val=$(parse_ini_value "$cfg" "defaults" "project" 2>/dev/null) || true
+    [[ -n "$val" ]] && PROJECT="$val"
+done
+
+# Export token if found
+[[ -n "$AUTH_TOKEN" ]] && export SENTRY_AUTH_TOKEN="$AUTH_TOKEN"
+
+# For display purposes, show the nearest config file
+CONFIG_FILE="${CONFIG_FILES[0]:-}"
+
+# Handle custom subcommands
+SUBCOMMAND="${1:-}"
+
+# Show current configuration (for debugging)
+if [[ "$SUBCOMMAND" == "config" ]]; then
+    echo "=== Sentry Wrapper Configuration ==="
+    echo ""
+    if [[ ${#CONFIG_FILES[@]} -gt 0 ]]; then
+        echo "Config files (nearest to furthest):"
+        for cfg in "${CONFIG_FILES[@]}"; do
+            echo "  $cfg"
+        done
+    else
+        echo "Config files: (none found)"
+    fi
+    echo ""
+    echo "Effective settings (merged):"
+    echo "  org:     ${ORG:-<not set>}"
+    echo "  project: ${PROJECT:-<not set>}"
+    if [[ -n "${AUTH_TOKEN:-}" ]]; then
+        # Mask token, show first 8 and last 4 chars
+        MASKED="${AUTH_TOKEN:0:8}...${AUTH_TOKEN: -4}"
+        echo "  token:   $MASKED"
+    else
+        echo "  token:   <not set>"
+    fi
+    echo ""
+    echo "To verify token works: sentry info"
+    echo "To list projects:      sentry projects"
+    exit 0
+fi
+
+# List available projects in the org
+if [[ "$SUBCOMMAND" == "projects" ]]; then
+    if [[ -z "${ORG:-}" ]]; then
+        echo "Error: No org configured. Set org in .sentryclirc or use -o flag." >&2
+        exit 1
+    fi
+    if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
+        echo "Error: No auth token found. Set token in .sentryclirc [auth] section." >&2
+        exit 1
     fi
     
-    # Extract org if present
-    ORG=$(grep -A2 '^\[defaults\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^org\s*=' | sed 's/^org\s*=\s*//')
+    echo "Projects in organization '$ORG':"
+    echo ""
     
-    # Extract project if present  
-    PROJECT=$(grep -A2 '^\[defaults\]' "$CONFIG_FILE" 2>/dev/null | grep -E '^project\s*=' | sed 's/^project\s*=\s*//')
+    RESPONSE=$(curl -sf -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+        "https://sentry.io/api/0/organizations/${ORG}/projects/" 2>&1) || {
+        echo "Error: Failed to fetch projects. Check your token and org name." >&2
+        echo "Response: $RESPONSE" >&2
+        exit 1
+    }
+    
+    echo "$RESPONSE" | jq -r '.[] | "  \(.slug)\t\(.name)"' | column -t -s $'\t'
+    exit 0
 fi
 
 # Commands that accept --org and --project flags (as subcommand flags)
-SUBCOMMAND="${1:-}"
 COMMANDS_WITH_ORG_PROJECT="issues|releases|deploys|repos|monitors|events|sourcemaps|debug-files|upload-proguard"
 
 # Build args: subcommand first, then org/project flags, then rest of args
@@ -43,10 +141,10 @@ if [[ "$SUBCOMMAND" =~ ^($COMMANDS_WITH_ORG_PROJECT)$ ]]; then
     shift  # Remove subcommand from $@
     ARGS=("$SUBCOMMAND")
     
-    if [[ -n "$ORG" ]] && ! [[ " $* " =~ " -o " || " $* " =~ " --org " ]]; then
+    if [[ -n "${ORG:-}" ]] && ! [[ " $* " =~ " -o " || " $* " =~ " --org " ]]; then
         ARGS+=("--org" "$ORG")
     fi
-    if [[ -n "$PROJECT" ]] && ! [[ " $* " =~ " -p " || " $* " =~ " --project " ]]; then
+    if [[ -n "${PROJECT:-}" ]] && ! [[ " $* " =~ " -p " || " $* " =~ " --project " ]]; then
         ARGS+=("--project" "$PROJECT")
     fi
     
