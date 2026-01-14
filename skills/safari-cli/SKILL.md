@@ -98,6 +98,32 @@ Reader mode works best for articles and blog posts. For technical documentation 
 {baseDir}/safari-source.sh            # Get HTML source
 ```
 
+## JavaScript Console
+
+Capture and retrieve console output (log, warn, error, etc.) from the page.
+
+```bash
+{baseDir}/safari-console-install.sh   # Install capture (run after page load)
+{baseDir}/safari-console.sh           # Get all captured messages
+{baseDir}/safari-console.sh --clear   # Get messages and clear buffer
+{baseDir}/safari-console.sh error     # Filter by type (log/warn/error/info/debug/uncaught)
+{baseDir}/safari-console.sh --json    # Output raw JSON
+```
+
+**Workflow:**
+```bash
+# 1. Navigate to page
+{baseDir}/safari-nav.sh https://example.com
+
+# 2. Install console capture
+{baseDir}/safari-console-install.sh
+
+# 3. Interact with the page, then retrieve logs
+{baseDir}/safari-console.sh
+```
+
+**Note:** Console capture must be installed after each page navigation. It cannot capture messages that occurred before installation.
+
 ## When to Use
 
 - Automating Safari on macOS
