@@ -4,7 +4,6 @@
 # Used for bootstrapping a new machine
 global_skills:
   # ClawdHub skills
-  - clawdhub
   - tavily-search
 
   # Local skills

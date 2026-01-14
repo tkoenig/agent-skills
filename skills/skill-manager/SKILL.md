@@ -56,6 +56,27 @@ clawdhub search "database"
 
 When the user needs a capability not covered by installed skills, search ClawdHub and suggest relevant results.
 
+## Updating ClawdHub Skills
+
+Update a specific skill to the latest version:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+# Update a specific skill
+clawdhub update <skill-name> --workdir "$REPO/clawdhub"
+
+# Update to a specific version
+clawdhub update <skill-name> --version 1.2.3 --workdir "$REPO/clawdhub"
+
+# Update all installed skills
+clawdhub update --all --workdir "$REPO/clawdhub"
+
+# Force update (skip hash check)
+clawdhub update <skill-name> --force --workdir "$REPO/clawdhub"
+```
+
 ## Installing a ClawdHub Skill
 
 Install a skill from ClawdHub to the repo:
@@ -71,6 +92,27 @@ After installing, ask the user if they want to:
 1. Link it globally (to `~/.pi/agent/skills/`)
 2. Link it to the current project (to `.pi/skills/`)
 3. Leave it unlinked for now
+
+## Uninstalling a ClawdHub Skill
+
+There is no `clawdhub uninstall` command. To uninstall manually:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+# 1. Remove global symlink if it exists
+rm -f ~/.pi/agent/skills/<skill-name>
+
+# 2. Remove project symlink if it exists
+rm -f .pi/skills/<skill-name>
+
+# 3. Delete the skill folder
+rm -rf "$REPO/clawdhub/skills/<skill-name>"
+
+# 4. Remove from lockfile
+# Edit $REPO/clawdhub/.clawdhub/lock.json and remove the skill entry
+```
 
 ## Linking Skills Globally
 

@@ -65,6 +65,6 @@ Manage project-level skills (local only by default).
 VS Code integration for viewing diffs.
 
 ### ClawdHub Skills
-- `clawdhub` - ClawdHub CLI
 - `tavily-search` - Web search
 - `wienerlinien` - Vienna public transport
+- `clawdhub` - ClawdHub CLI (for publishing skills)
