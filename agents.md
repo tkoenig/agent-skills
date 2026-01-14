@@ -11,3 +11,9 @@ curl https://agentskills.io/specification.md
 ```
 
 Do this before creating, editing, or validating any skill.
+
+## Agent Behavior Rules
+
+- When installing ClawdHub skills, use the `skill-manager` skill (globally available at `~/.pi/agent/skills/skill-manager/SKILL.md`)
+- When listing skills, use the `skill-manager` skill - it has a tool for this
+- Do NOT automatically symlink or activate skills - let the user decide

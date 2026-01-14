@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# List all available skills with their source and activation status
+# Output: JSON array of skills
+
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+# Get global and local skills as lists
+global_skills=$(ls ~/.pi/agent/skills/ 2>/dev/null | tr '\n' '|')
+local_skills=""
+if [ -d ".pi/skills" ]; then
+  local_skills=$(ls .pi/skills/ 2>/dev/null | tr '\n' '|')
+fi
+
+echo "["
+
+first=true
+
+# Local skills
+for skill in "$REPO/skills/"*/; do
+  [ -d "$skill" ] || continue
+  name=$(basename "$skill")
+  
+  is_global=$(echo "$global_skills" | grep -w "$name" || true)
+  is_local=$(echo "$local_skills" | grep -w "$name" || true)
+  
+  global_flag="false"
+  local_flag="false"
+  [[ -n "$is_global" ]] && global_flag="true"
+  [[ -n "$is_local" ]] && local_flag="true"
+  
+  [[ "$first" == "true" ]] || echo ","
+  first=false
+  printf '{"name":"%s","source":"local","global":%s,"local":%s}' "$name" "$global_flag" "$local_flag"
+done
+
+# ClawdHub skills
+for skill in "$REPO/clawdhub/skills/"*/; do
+  [ -d "$skill" ] || continue
+  name=$(basename "$skill")
+  
+  is_global=$(echo "$global_skills" | grep -w "$name" || true)
+  is_local=$(echo "$local_skills" | grep -w "$name" || true)
+  
+  global_flag="false"
+  local_flag="false"
+  [[ -n "$is_global" ]] && global_flag="true"
+  [[ -n "$is_local" ]] && local_flag="true"
+  
+  [[ "$first" == "true" ]] || echo ","
+  first=false
+  printf '{"name":"%s","source":"clawdhub","global":%s,"local":%s}' "$name" "$global_flag" "$local_flag"
+done
+
+echo ""
+echo "]"

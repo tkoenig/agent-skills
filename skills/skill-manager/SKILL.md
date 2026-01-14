@@ -1,13 +1,14 @@
 ---
 name: skill-manager
-description: Manage pi-coding-agent skills for projects. Link skills, list available skills, search ClawdHub for new skills, set up project-level .pi/ configuration, and suggest relevant skills based on project analysis.
+description: Manage and list agent skills - both global (~/.pi/agent/skills/) and project-level (.pi/skills/). List all skills, search ClawdHub, install skills, link/unlink skills. Do NOT automatically symlink or activate skills - always let the user decide.
 ---
 
 # Skill Manager
 
-Manage pi-coding-agent skills for projects. Use when the user wants to:
-- Link skills to a project
-- List available skills
+Manage agent skills for global use or project-specific use. Use when the user wants to:
+- Install skills from ClawdHub
+- Link/unlink skills globally or to a project
+- List available/installed skills
 - Search for new skills on ClawdHub
 - Set up project-level `.pi/` configuration
 
@@ -21,50 +22,75 @@ AGENT_SKILLS_REPO=$(dirname $(dirname "$SKILL_PATH"))
 echo "$AGENT_SKILLS_REPO"
 ```
 
-## Available Skills (Installed)
+## List All Skills
+
+Use the `list-skills` tool to get all skills as JSON:
 
 ```bash
 SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
 REPO=$(dirname $(dirname "$SKILL_PATH"))
-
-echo "Local skills:"
-ls "$REPO/skills/"
-
-echo "ClawdHub skills:"
-ls "$REPO/clawdhub/skills/"
+"$REPO/skills/skill-manager/tools/list-skills"
 ```
+
+Output is a JSON array with fields: `name`, `source` (local/clawdhub), `global` (bool), `local` (bool).
+
+Format as a table for the user:
+
+| Skill | Source | Active |
+|-------|--------|--------|
+| name | local/clawdhub | ✓ (g) / ✓ (l) / ✓ (l)(g) / empty |
+
+- ✓ (g) = globally linked (~/.pi/agent/skills/)
+- ✓ (l) = project-linked (.pi/skills/)
+- ✓ (l)(g) = both
 
 ## Search ClawdHub for Skills
 
 Search for skills on ClawdHub by keyword or description:
 
 ```bash
-npx clawdhub@latest search "github"
-npx clawdhub@latest search "web scraping"
-npx clawdhub@latest search "database" --limit 5
+clawdhub search "github"
+clawdhub search "web scraping"
+clawdhub search "database"
 ```
 
 When the user needs a capability not covered by installed skills, search ClawdHub and suggest relevant results.
 
 ## Installing a ClawdHub Skill
 
-To install a skill from ClawdHub, add it to `config.yml` and run sync:
+Install a skill from ClawdHub to the repo:
 
 ```bash
 SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
 REPO=$(dirname $(dirname "$SKILL_PATH"))
 
-# Add to clawdhub_skills in config.yml
-# Then run:
-"$REPO/bin/sync"
+clawdhub install <skill-slug> --workdir "$REPO/clawdhub"
 ```
 
-Or install directly (won't persist across syncs):
+After installing, ask the user if they want to:
+1. Link it globally (to `~/.pi/agent/skills/`)
+2. Link it to the current project (to `.pi/skills/`)
+3. Leave it unlinked for now
+
+## Linking Skills Globally
+
+Link a skill to make it available in all projects:
+
 ```bash
 SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
 REPO=$(dirname $(dirname "$SKILL_PATH"))
 
-npx clawdhub@latest install <skill-slug> --workdir "$REPO/clawdhub"
+# Link a local skill
+ln -sf "$REPO/skills/<skill-name>" ~/.pi/agent/skills/
+
+# Link a ClawdHub skill
+ln -sf "$REPO/clawdhub/skills/<skill-name>" ~/.pi/agent/skills/
+```
+
+## Unlinking Global Skills
+
+```bash
+rm ~/.pi/agent/skills/<skill-name>
 ```
 
 ## Linking Skills to a Project
@@ -78,10 +104,10 @@ REPO=$(dirname $(dirname "$SKILL_PATH"))
 mkdir -p .pi/skills
 
 # Link a local skill
-ln -sf "$REPO/skills/github" .pi/skills/
+ln -sf "$REPO/skills/<skill-name>" .pi/skills/
 
 # Link a ClawdHub skill
-ln -sf "$REPO/clawdhub/skills/tavily-search" .pi/skills/
+ln -sf "$REPO/clawdhub/skills/<skill-name>" .pi/skills/
 ```
 
 ## Suggesting Skills for a Project
@@ -125,7 +151,7 @@ When setting up skills for a project, analyze it and suggest relevant skills:
 2. If `package.json` exists, check dependencies
 3. If `Gemfile` exists, check gems: `grep -E "gem ['\"]sentry|tailwind" Gemfile`
 4. Suggest relevant skills based on findings
-5. If no matching installed skill, search ClawdHub: `npx clawdhub@latest search "<need>"`
+5. If no matching installed skill, search ClawdHub: `clawdhub search "<need>"`
 6. Ask user to confirm before linking/installing
 7. Create symlinks for confirmed skills
 

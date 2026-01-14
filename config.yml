@@ -1,25 +1,14 @@
 # Agent Skills Configuration
 
-# Skills to install globally (~/.pi/agent/skills/)
-# Both local and ClawdHub skills can be listed here
+# Skills to link globally (~/.pi/agent/skills/)
+# Used for bootstrapping a new machine
 global_skills:
-  # Local skills
-#  - daisyui
-  - github
-#  - hcloud
-#  - peekaboo
-  - safari-cli
-#  - sentry
-  - vscode
-  - skill-manager
-  
   # ClawdHub skills
   - clawdhub
   - tavily-search
-#  - wienerlinien
 
-# ClawdHub skills to download (not necessarily global)
-clawdhub_skills:
-  - clawdhub
-  - tavily-search
-  - wienerlinien
+  # Local skills
+  - github
+  - safari-cli
+  - skill-manager
+  - vscode
