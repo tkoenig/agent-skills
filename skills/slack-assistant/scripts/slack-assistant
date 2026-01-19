@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -z "${SLACK_USER_TOKEN:-}" ]]; then
+  echo "SLACK_USER_TOKEN is not set" >&2
+  exit 1
+fi
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  slack-assistant list-users
+  slack-assistant presence --user U12345678
+  slack-assistant send-channel --channel C12345678 --text "Hello"
+  slack-assistant dm --user U12345678 --text "Hello"
+USAGE
+}
+
+slack_get() {
+  local url="$1"
+  curl -sS -X GET "$url" \
+    -H "Authorization: Bearer $SLACK_USER_TOKEN" \
+    -H "Content-Type: application/x-www-form-urlencoded"
+}
+
+slack_post() {
+  local url="$1"
+  local payload="$2"
+  curl -sS -X POST "$url" \
+    -H "Authorization: Bearer $SLACK_USER_TOKEN" \
+    -H "Content-type: application/json; charset=utf-8" \
+    --data "$payload"
+}
+
+command=${1:-}
+shift || true
+
+case "$command" in
+  list-users)
+    response=$(slack_get "https://slack.com/api/users.list")
+    printf '%s' "$response" | python -c 'import json,sys
+resp=json.load(sys.stdin)
+if not resp.get("ok"):
+    print(f"Slack API error: {resp}", file=sys.stderr)
+    sys.exit(1)
+print("id\tusername\treal_name\ttype")
+for member in resp.get("members", []):
+    if member.get("deleted"):
+        continue
+    name = member.get("name") or ""
+    profile = member.get("profile") or {}
+    real_name = member.get("real_name") or profile.get("real_name") or ""
+    kind = "bot" if member.get("is_bot") else "user"
+    print("{}\t{}\t{}\t{}".format(member.get("id", ""), name, real_name, kind))'
+    ;;
+  presence)
+    user_id=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --user)
+          user_id="$2"
+          shift 2
+          ;;
+        -h|--help)
+          usage
+          exit 0
+          ;;
+        *)
+          echo "Unknown option: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$user_id" ]]; then
+      usage
+      exit 1
+    fi
+
+    response=$(slack_get "https://slack.com/api/users.getPresence?user=$user_id")
+    printf '%s' "$response" | python -c 'import json,sys
+resp=json.load(sys.stdin)
+if not resp.get("ok"):
+    print(f"Slack API error: {resp}", file=sys.stderr)
+    sys.exit(1)
+print("Presence: {}".format(resp.get("presence", "unknown")))'
+    ;;
+  send-channel)
+    channel_id=""
+    message_text=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --channel)
+          channel_id="$2"
+          shift 2
+          ;;
+        --text)
+          message_text="$2"
+          shift 2
+          ;;
+        -h|--help)
+          usage
+          exit 0
+          ;;
+        *)
+          echo "Unknown option: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$channel_id" || -z "$message_text" ]]; then
+      usage
+      exit 1
+    fi
+
+    payload=$(SLACK_CHANNEL_ID="$channel_id" SLACK_MESSAGE_TEXT="$message_text" python - <<'PY'
+import json
+import os
+
+print(json.dumps({"channel": os.environ["SLACK_CHANNEL_ID"], "text": os.environ["SLACK_MESSAGE_TEXT"]}))
+PY
+)
+
+    response=$(slack_post "https://slack.com/api/chat.postMessage" "$payload")
+    printf '%s' "$response" | python -c 'import json,sys
+resp=json.load(sys.stdin)
+if not resp.get("ok"):
+    print(f"Slack API error: {resp}", file=sys.stderr)
+    sys.exit(1)
+print("Message sent (ts={}).".format(resp.get("ts", "")))'
+    ;;
+  dm)
+    user_id=""
+    message_text=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --user)
+          user_id="$2"
+          shift 2
+          ;;
+        --text)
+          message_text="$2"
+          shift 2
+          ;;
+        -h|--help)
+          usage
+          exit 0
+          ;;
+        *)
+          echo "Unknown option: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$user_id" || -z "$message_text" ]]; then
+      usage
+      exit 1
+    fi
+
+    dm_payload=$(SLACK_USER_ID="$user_id" python - <<'PY'
+import json
+import os
+
+print(json.dumps({"users": os.environ["SLACK_USER_ID"]}))
+PY
+)
+
+    dm_response=$(slack_post "https://slack.com/api/conversations.open" "$dm_payload")
+    channel_id=$(printf '%s' "$dm_response" | python -c 'import json,sys
+resp=json.load(sys.stdin)
+if not resp.get("ok"):
+    print("", end="")
+    sys.exit(1)
+print(resp["channel"]["id"])')
+
+    if [[ -z "$channel_id" ]]; then
+      echo "Failed to open DM." >&2
+      exit 1
+    fi
+
+    message_payload=$(SLACK_CHANNEL_ID="$channel_id" SLACK_MESSAGE_TEXT="$message_text" python - <<'PY'
+import json
+import os
+
+print(json.dumps({"channel": os.environ["SLACK_CHANNEL_ID"], "text": os.environ["SLACK_MESSAGE_TEXT"]}))
+PY
+)
+
+    response=$(slack_post "https://slack.com/api/chat.postMessage" "$message_payload")
+    printf '%s' "$response" | python -c 'import json,sys
+resp=json.load(sys.stdin)
+if not resp.get("ok"):
+    print(f"Slack API error: {resp}", file=sys.stderr)
+    sys.exit(1)
+print("Message sent (ts={}).".format(resp.get("ts", "")))'
+    ;;
+  -h|--help|"")
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown command: $command" >&2
+    usage
+    exit 1
+    ;;
+esac

@@ -1,0 +1,52 @@
+---
+name: slack-assistant
+description: Send Slack messages as the authenticated user via CLI and SLACK_USER_TOKEN.
+---
+
+# Slack Assistant
+
+Use when you want to send Slack messages as the user who authorized the app.
+
+CLI commands are relative to this skill directory (use `{baseDir}`).
+
+## Confirmation
+
+Always ask for confirmation before sending a message.
+
+## Requirements
+
+- `SLACK_USER_TOKEN` is set (`xoxp-...`).
+- `SLACK_USER_NAME` is the username of the authenticated user (e.g., `tomk`).
+- Token has `chat:write` scope (and `channels:read`/`groups:read`/`users:read` if needed).
+
+## Current User
+
+You are sending messages as `$SLACK_USER_NAME`.
+
+## List users
+
+```bash
+bash {baseDir}/scripts/slack-assistant list-users
+```
+
+## Check presence
+
+```bash
+bash {baseDir}/scripts/slack-assistant presence --user U12345678
+```
+
+## Send a message to a channel
+
+```bash
+bash {baseDir}/scripts/slack-assistant send-channel --channel C12345678 --text "Hello"
+```
+
+## Send a DM
+
+If the recipient is unclear, list users to identify the correct user ID before sending (no confirmation needed for listing users).
+
+Before asking for confirmation to send the DM, check and report the recipient's presence status.
+
+```bash
+bash {baseDir}/scripts/slack-assistant dm --user U12345678 --text "Hello"
+```
