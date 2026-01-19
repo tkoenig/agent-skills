@@ -17,7 +17,7 @@ Always ask for confirmation before sending a message.
 
 - `SLACK_USER_TOKEN` is set (`xoxp-...`).
 - `SLACK_USER_NAME` is the username of the authenticated user (e.g., `tomk`).
-- Token has `chat:write` scope (and `channels:read`/`groups:read`/`users:read` if needed).
+- Token has `chat:write` scope (and `channels:read`/`groups:read`/`users:read` / `im:history`if needed).
 
 ## Current User
 
@@ -49,4 +49,26 @@ Before asking for confirmation to send the DM, check and report the recipient's 
 
 ```bash
 bash {baseDir}/scripts/slack-assistant dm --user U12345678 --text "Hello"
+```
+
+## Formatting (mrkdwn)
+
+Slack uses "mrkdwn" format, NOT Markdown. Key differences:
+
+| Format | Slack mrkdwn | NOT Markdown |
+|--------|--------------|--------------|
+| Bold | `*bold*` | ~~`**bold**`~~ |
+| Italic | `_italic_` | ~~`*italic*`~~ |
+| Strike | `~strike~` | ~~`~~strike~~`~~ |
+| Code | `` `code` `` | (same) |
+| Code block | ` ```code``` ` | (same) |
+| Link | `<url\|text>` | ~~`[text](url)`~~ |
+| Bullet | `• item` or `- item` | (same) |
+
+Example:
+```
+*PR Review: v2/legacy cleanup (#499)*
+
+• Removes unused helpers - _nice cleanup_
+• See <https://github.com/org/repo/pull/499|PR #499>
 ```
