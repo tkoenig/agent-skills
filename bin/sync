@@ -46,6 +46,8 @@ sync_category() {
     fi
     
     if [[ -e "$item_path" ]]; then
+      # Remove real directories (not symlinks) before symlinking
+      [[ -d "$target_path" && ! -L "$target_path" ]] && rm -rf "$target_path"
       ln -sfn "$item_path" "$target_path"
       echo "  + $item"
       expected_items+=("$item")
@@ -54,6 +56,8 @@ sync_category() {
       if [[ "$name" == "skills" ]]; then
         clawdhub_path="$SCRIPT_DIR/clawdhub/skills/$item"
         if [[ -f "$clawdhub_path/SKILL.md" ]]; then
+          # Remove real directories (not symlinks) before symlinking
+          [[ -d "$target_path" && ! -L "$target_path" ]] && rm -rf "$target_path"
           ln -sfn "$clawdhub_path" "$target_path"
           echo "  + $item (clawdhub)"
           expected_items+=("$item")
