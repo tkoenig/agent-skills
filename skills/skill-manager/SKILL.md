@@ -93,6 +93,52 @@ After installing, ask the user if they want to:
 2. Link it to the current project (to `.pi/skills/`)
 3. Leave it unlinked for now
 
+## Installing a Skill from GitHub
+
+Install a skill directly from a GitHub repository:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+"$REPO/skills/skill-manager/tools/github-install" <github-url>
+```
+
+Supported URL formats:
+- `https://github.com/owner/repo/tree/branch/path/to/skill`
+- `https://github.com/owner/repo/blob/branch/path/to/skill/SKILL.md`
+
+Example:
+```bash
+"$REPO/skills/skill-manager/tools/github-install" https://github.com/badlogic/pi-skills/tree/main/browser-tools
+```
+
+Skills are installed to `$REPO/github/skills/<skill-name>`. A `.github-source` file tracks the origin for updates.
+
+After installing, ask the user if they want to link it (same as ClawdHub skills):
+```bash
+# Link globally
+ln -sf "$REPO/github/skills/<skill-name>" ~/.pi/agent/skills/
+
+# Link to project
+ln -sf "$REPO/github/skills/<skill-name>" .pi/skills/
+```
+
+## Updating GitHub Skills
+
+Update a GitHub-installed skill to the latest version:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+# Update a specific skill
+"$REPO/skills/skill-manager/tools/github-update" <skill-name>
+
+# Update all GitHub-installed skills
+"$REPO/skills/skill-manager/tools/github-update" --all
+```
+
 ## Uninstalling a ClawdHub Skill
 
 There is no `clawdhub uninstall` command. To uninstall manually:

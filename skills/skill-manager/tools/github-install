@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Install a skill from a GitHub repository
+# Usage: github-install <github-url> [target-dir]
+#
+# Examples:
+#   github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools
+#   github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools ./github
+#
+# Supports URLs in these formats:
+#   https://github.com/owner/repo/tree/branch/path/to/skill
+#   https://github.com/owner/repo/blob/branch/path/to/skill/SKILL.md
+
+set -euo pipefail
+
+usage() {
+    echo "Usage: github-install <github-url> [target-dir]"
+    echo ""
+    echo "Install a skill from a GitHub repository."
+    echo ""
+    echo "Arguments:"
+    echo "  github-url   URL to a skill directory on GitHub"
+    echo "  target-dir   Where to install (default: ./github/skills)"
+    echo ""
+    echo "Examples:"
+    echo "  github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools"
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+GITHUB_URL="$1"
+TARGET_BASE="${2:-./github/skills}"
+
+# Parse GitHub URL
+# Format: https://github.com/owner/repo/tree/branch/path/to/skill
+# or:     https://github.com/owner/repo/blob/branch/path/to/skill/SKILL.md
+
+if [[ ! "$GITHUB_URL" =~ ^https://github\.com/ ]]; then
+    echo "Error: URL must be a GitHub URL (https://github.com/...)"
+    exit 1
+fi
+
+# Remove https://github.com/ prefix
+URL_PATH="${GITHUB_URL#https://github.com/}"
+
+# Extract owner/repo
+OWNER_REPO=$(echo "$URL_PATH" | cut -d'/' -f1-2)
+OWNER=$(echo "$OWNER_REPO" | cut -d'/' -f1)
+REPO=$(echo "$OWNER_REPO" | cut -d'/' -f2)
+
+# Extract branch and path (handle both /tree/ and /blob/)
+if [[ "$URL_PATH" =~ /tree/ ]]; then
+    REMAINDER="${URL_PATH#*/tree/}"
+elif [[ "$URL_PATH" =~ /blob/ ]]; then
+    REMAINDER="${URL_PATH#*/blob/}"
+else
+    echo "Error: URL must contain /tree/ or /blob/"
+    exit 1
+fi
+
+# First segment is the branch, rest is the path
+BRANCH=$(echo "$REMAINDER" | cut -d'/' -f1)
+SKILL_PATH=$(echo "$REMAINDER" | cut -d'/' -f2-)
+
+# If the path ends with SKILL.md, remove it
+SKILL_PATH="${SKILL_PATH%/SKILL.md}"
+
+# Get the skill name (last component of path)
+SKILL_NAME=$(basename "$SKILL_PATH")
+
+echo "Parsed GitHub URL:"
+echo "  Owner: $OWNER"
+echo "  Repo: $REPO"
+echo "  Branch: $BRANCH"
+echo "  Path: $SKILL_PATH"
+echo "  Skill Name: $SKILL_NAME"
+echo ""
+
+# Create target directory
+mkdir -p "$TARGET_BASE"
+
+# Create a temp directory for cloning
+TMPDIR=$(mktemp -d)
+trap "rm -rf '$TMPDIR'" EXIT
+
+echo "Cloning repository (sparse checkout)..."
+
+# Use git sparse checkout to only fetch the skill directory
+cd "$TMPDIR"
+git init -q
+git remote add origin "https://github.com/$OWNER/$REPO.git"
+git config core.sparseCheckout true
+echo "$SKILL_PATH" >> .git/info/sparse-checkout
+git fetch --depth 1 origin "$BRANCH" -q
+git checkout -q FETCH_HEAD
+
+# Check if SKILL.md exists
+if [[ ! -f "$SKILL_PATH/SKILL.md" ]]; then
+    echo "Error: No SKILL.md found at $SKILL_PATH"
+    echo "This doesn't appear to be a valid Agent Skill."
+    exit 1
+fi
+
+# Copy to target
+TARGET_DIR="$OLDPWD/$TARGET_BASE/$SKILL_NAME"
+
+if [[ -d "$TARGET_DIR" ]]; then
+    echo "Skill '$SKILL_NAME' already exists at $TARGET_DIR"
+    echo "Remove it first or use a different target directory."
+    exit 1
+fi
+
+cp -r "$SKILL_PATH" "$TARGET_DIR"
+
+cd "$OLDPWD"
+
+echo ""
+echo "✓ Installed '$SKILL_NAME' to $TARGET_DIR"
+echo ""
+echo "To link globally:"
+echo "  ln -sf \"\$(pwd)/$TARGET_BASE/$SKILL_NAME\" ~/.pi/agent/skills/"
+echo ""
+echo "To link to a project:"
+echo "  ln -sf \"\$(pwd)/$TARGET_BASE/$SKILL_NAME\" .pi/skills/"
+
+# Create/update a source tracking file
+SOURCE_FILE="$TARGET_DIR/.github-source"
+cat > "$SOURCE_FILE" << EOF
+url: $GITHUB_URL
+owner: $OWNER
+repo: $REPO
+branch: $BRANCH
+path: $SKILL_PATH
+installed: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+EOF
+
+echo ""
+echo "Source tracked in $SOURCE_FILE"
