@@ -1,8 +1,10 @@
 #!/bin/bash
-# Sync skills based on config.yml
+# Sync skills, prompts, and extensions based on config.yml
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SKILLS_DIR=~/.pi/agent/skills
+PROMPTS_DIR=~/.pi/agent/prompts
+EXTENSIONS_DIR=~/.pi/agent/extensions
 CONFIG="$SCRIPT_DIR/config.yml"
 
 if [[ ! -f "$CONFIG" ]]; then
@@ -20,58 +22,90 @@ parse_yaml_list() {
   ' "$CONFIG"
 }
 
-mkdir -p "$SKILLS_DIR"
-
-# First, download ClawdHub skills
-echo "Downloading ClawdHub skills..."
-"$SCRIPT_DIR/bin/clawdsync"
-
-echo ""
-echo "Syncing global skills..."
-
-# Collect which skills should exist
-declare -a expected_skills
-
-for skill in $(parse_yaml_list "global_skills"); do
-  # Check local skills first
-  skill_path="$SCRIPT_DIR/skills/$skill"
-  if [[ -f "$skill_path/SKILL.md" ]]; then
-    ln -sf "$skill_path" "$SKILLS_DIR/"
-    echo "  + $skill"
-    expected_skills+=("$skill")
-    continue
-  fi
+# Sync a category (skills, prompts, extensions)
+sync_category() {
+  local name="$1"           # e.g., "skills"
+  local config_key="$2"     # e.g., "global_skills"
+  local target_dir="$3"     # e.g., ~/.pi/agent/skills
+  local source_dir="$4"     # e.g., $SCRIPT_DIR/skills
+  local is_file="$5"        # "file" for prompts (*.md), "dir" for skills/extensions
   
-  # Then check ClawdHub skills
-  skill_path="$SCRIPT_DIR/clawdhub/skills/$skill"
-  if [[ -f "$skill_path/SKILL.md" ]]; then
-    ln -sf "$skill_path" "$SKILLS_DIR/"
-    echo "  + $skill (clawdhub)"
-    expected_skills+=("$skill")
-    continue
-  fi
+  mkdir -p "$target_dir"
   
-  echo "  ? $skill (not found, skipping)"
-done
-
-# Remove skills not in config
-echo ""
-echo "Cleaning up..."
-for link in "$SKILLS_DIR"/*/; do
-  [[ ! -L "${link%/}" ]] && continue
-  skill_name=$(basename "$link")
+  echo "Syncing global $name..."
   
-  # Check if skill is in expected list
-  found=false
-  for expected in "${expected_skills[@]}"; do
-    [[ "$expected" == "$skill_name" ]] && found=true && break
+  declare -a expected_items
+  
+  for item in $(parse_yaml_list "$config_key"); do
+    if [[ "$is_file" == "file" ]]; then
+      item_path="$source_dir/$item.md"
+      target_path="$target_dir/$item.md"
+    else
+      item_path="$source_dir/$item"
+      target_path="$target_dir/$item"
+    fi
+    
+    if [[ -e "$item_path" ]]; then
+      ln -sfn "$item_path" "$target_path"
+      echo "  + $item"
+      expected_items+=("$item")
+    else
+      # For skills, also check ClawdHub
+      if [[ "$name" == "skills" ]]; then
+        clawdhub_path="$SCRIPT_DIR/clawdhub/skills/$item"
+        if [[ -f "$clawdhub_path/SKILL.md" ]]; then
+          ln -sfn "$clawdhub_path" "$target_path"
+          echo "  + $item (clawdhub)"
+          expected_items+=("$item")
+          continue
+        fi
+      fi
+      echo "  ? $item (not found, skipping)"
+    fi
   done
   
-  if [[ "$found" == false ]]; then
-    rm "$SKILLS_DIR/$skill_name"
-    echo "  - $skill_name"
+  # Remove items not in config
+  echo ""
+  echo "Cleaning up $name..."
+  
+  if [[ "$is_file" == "file" ]]; then
+    pattern="$target_dir/*.md"
+  else
+    pattern="$target_dir/*/"
   fi
-done
+  
+  for link in $pattern; do
+    [[ ! -L "${link%/}" ]] && continue
+    
+    if [[ "$is_file" == "file" ]]; then
+      item_name=$(basename "$link" .md)
+    else
+      item_name=$(basename "$link")
+    fi
+    
+    # Check if item is in expected list
+    found=false
+    for expected in "${expected_items[@]}"; do
+      [[ "$expected" == "$item_name" ]] && found=true && break
+    done
+    
+    if [[ "$found" == false ]]; then
+      rm "${link%/}"
+      echo "  - $item_name"
+    fi
+  done
+  
+  echo ""
+}
 
+# Download ClawdHub skills first
+echo "Downloading ClawdHub skills..."
+"$SCRIPT_DIR/bin/clawdsync"
 echo ""
+
+# Sync each category
+sync_category "skills" "global_skills" "$SKILLS_DIR" "$SCRIPT_DIR/skills" "dir"
+sync_category "prompts" "global_prompts" "$PROMPTS_DIR" "$SCRIPT_DIR/prompts" "file"
+sync_category "extensions" "global_extensions" "$EXTENSIONS_DIR" "$SCRIPT_DIR/extensions" "dir"
+
 echo "Done!"

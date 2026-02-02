@@ -11,3 +11,13 @@ global_skills:
   - safari-cli
   - skill-manager
   - vscode
+
+# Prompts to link globally (~/.pi/agent/prompts/)
+global_prompts:
+  - commit
+  - pr-review
+  - recent-changes
+
+# Extensions to link globally (~/.pi/agent/extensions/)
+global_extensions:
+  - infra-guard

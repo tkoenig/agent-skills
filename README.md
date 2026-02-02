@@ -1,6 +1,6 @@
 # Agent Skills
 
-Custom skills for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent).
+Custom skills, prompts, and extensions for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent).
 
 ## Installation
 
@@ -8,30 +8,44 @@ Custom skills for [pi-coding-agent](https://github.com/mariozechner/pi-coding-ag
 ./bin/sync
 ```
 
-This syncs skills based on `config.yml` - adds new ones, removes old ones.
+This syncs skills, prompts, and extensions based on `config.yml` - adds new ones, removes old ones.
 
 ## Configuration
 
-Edit `config.yml` to control which skills are installed globally:
+Edit `config.yml` to control what's installed globally:
 
 ```yaml
 # Skills to install globally (~/.pi/agent/skills/)
 global_skills:
   - github
-  - peekaboo
-  # - skill-manager  # commented out = not global
+  - safari-cli
 
-# ClawdHub skills to install and sync
-clawdhub_skills:
-  - clawdhub
-  - tavily-search
+# Prompts to install globally (~/.pi/agent/prompts/)
+global_prompts:
+  - commit
+  - pr-review
+
+# Extensions to install globally (~/.pi/agent/extensions/)
+global_extensions:
+  - infra-guard
 ```
 
-Run `./bin/install` after changes.
+Run `./bin/sync` after changes.
 
-## Per-Project Skills
+## Per-Project Setup
 
-Ask Pi to set up skills for your project - it will analyze the project and suggest relevant skills to link to `.pi/skills/`.
+Symlink skills, prompts, or extensions to any project:
+
+```bash
+# Skills
+ln -s ~/Development/tkoenig/agent-skills/skills/daisyui .pi/skills/daisyui
+
+# Prompts
+ln -s ~/Development/tkoenig/agent-skills/prompts/commit.md .pi/prompts/commit.md
+
+# Extensions
+ln -s ~/Development/tkoenig/agent-skills/extensions/infra-guard .pi/extensions/infra-guard
+```
 
 ## Skills
 
@@ -47,10 +61,6 @@ GitHub CLI integration (`gh` for issues, PRs, CI).
 Hetzner Cloud management via `hcloud` CLI.  
 **Install:** `brew install hcloud`
 
-### peekaboo
-macOS screenshots, clicks, typing, window management.  
-**Install:** `brew install steipete/tap/peekaboo`
-
 ### safari-cli
 Safari browser automation via AppleScript.  
 **Setup:** Safari > Develop > Allow JavaScript from Apple Events
@@ -61,10 +71,27 @@ Sentry error tracking and issue management.
 ### skill-manager
 Manage project-level skills (local only by default).
 
+### slack-assistant
+Slack channel monitoring and message posting.
+
 ### vscode
 VS Code integration for viewing diffs.
 
 ### ClawdHub Skills
 - `tavily-search` - Web search
-- `wienerlinien` - Vienna public transport
-- `clawdhub` - ClawdHub CLI (for publishing skills)
+
+## Prompts
+
+### commit
+Review and commit staged changes with verification, conventional commits, and optional PR creation.
+
+### pr-review
+Structured PR review with issue analysis and code quality checks.
+
+### recent-changes
+Show recent git commits by other team members since your last work session.
+
+## Extensions
+
+### infra-guard
+Blocks SSH, Ansible, Terraform, rsync, and scp commands to prevent accidental remote server access. These commands should be executed by the user, not the AI agent.
