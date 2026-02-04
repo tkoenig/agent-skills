@@ -1,0 +1,68 @@
+#!/bin/bash
+# Query a pi session file for context, decisions, or information
+# Usage: session-query <session-path> <question>
+
+set -e
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: session-query <session-path> <question>"
+    echo ""
+    echo "Query a previous pi session for context."
+    echo ""
+    echo "Arguments:"
+    echo "  session-path   Full path to the session .jsonl file"
+    echo "  question       What you want to know about the session"
+    echo ""
+    echo "Examples:"
+    echo "  session-query /path/to/session.jsonl 'What files were modified?'"
+    echo "  session-query /path/to/session.jsonl 'What approach was chosen?'"
+    exit 1
+fi
+
+SESSION_PATH="$1"
+shift
+QUESTION="$*"
+
+if [[ ! -f "$SESSION_PATH" ]]; then
+    echo "Error: Session file not found: $SESSION_PATH" >&2
+    exit 1
+fi
+
+if [[ ! "$SESSION_PATH" == *.jsonl ]]; then
+    echo "Error: Expected a .jsonl file, got: $SESSION_PATH" >&2
+    exit 1
+fi
+
+# Extract conversation from the session file
+# Each line is a JSON object; we want entries with type="message"
+# Filter to user/assistant messages with text content
+CONVERSATION=$(jq -s '
+    [.[] | select(.type == "message") | .message] |
+    map(select(.content != null and (.role == "user" or .role == "assistant"))) |
+    map(
+        "## " + (.role | ascii_upcase) + "\n\n" +
+        ([.content[] | select(.type == "text") | .text] | join("\n"))
+    ) | 
+    map(select(. != "## USER\n\n" and . != "## ASSISTANT\n\n")) |
+    join("\n\n---\n\n")
+' "$SESSION_PATH")
+
+if [[ -z "$CONVERSATION" || "$CONVERSATION" == '""' ]]; then
+    echo "Error: No messages found in session" >&2
+    exit 1
+fi
+
+# Use pi to answer the question about the session
+PROMPT="Given this conversation from a pi coding session, answer the following question concisely:
+
+## Session Conversation
+
+$CONVERSATION
+
+## Question
+
+$QUESTION
+
+Be concise and direct. Focus on specific facts, decisions, file paths, and code changes. If the information isn't in the session, say so."
+
+echo "$PROMPT" | pi -p -
