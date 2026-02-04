@@ -113,7 +113,7 @@ Example:
 "$REPO/skills/skill-manager/tools/github-install" https://github.com/badlogic/pi-skills/tree/main/browser-tools
 ```
 
-Skills are installed to `$REPO/github/skills/<skill-name>`. A `.github-source` file tracks the origin for updates.
+Skills are installed to `$REPO/github/skills/<skill-name>` and the URL is added to `config.yml` under `github_skills:` for tracking.
 
 After installing, ask the user if they want to link it (same as ClawdHub skills):
 ```bash
@@ -126,17 +126,17 @@ ln -sf "$REPO/github/skills/<skill-name>" .pi/skills/
 
 ## Updating GitHub Skills
 
-Update a GitHub-installed skill to the latest version:
+Update GitHub-installed skills to the latest version (reads URLs from `config.yml`):
 
 ```bash
 SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
 REPO=$(dirname $(dirname "$SKILL_PATH"))
 
-# Update a specific skill
-"$REPO/skills/skill-manager/tools/github-update" <skill-name>
+# Update all GitHub-installed skills (default)
+"$REPO/skills/skill-manager/tools/github-update"
 
-# Update all GitHub-installed skills
-"$REPO/skills/skill-manager/tools/github-update" --all
+# Update a specific skill by name
+"$REPO/skills/skill-manager/tools/github-update" <skill-name>
 ```
 
 ## Uninstalling a ClawdHub Skill

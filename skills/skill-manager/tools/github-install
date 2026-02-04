@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Install a skill from a GitHub repository
-# Usage: github-install <github-url> [target-dir]
+# Usage: github-install <github-url>
 #
 # Examples:
 #   github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools
-#   github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools ./github
+#   github-install https://github.com/mitsuhiko/agent-stuff/tree/main/skills/openscad
 #
 # Supports URLs in these formats:
 #   https://github.com/owner/repo/tree/branch/path/to/skill
@@ -12,14 +12,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CONFIG_FILE="$REPO_DIR/config.yml"
+GITHUB_SKILLS_DIR="$REPO_DIR/github/skills"
+
 usage() {
-    echo "Usage: github-install <github-url> [target-dir]"
+    echo "Usage: github-install <github-url>"
     echo ""
     echo "Install a skill from a GitHub repository."
-    echo ""
-    echo "Arguments:"
-    echo "  github-url   URL to a skill directory on GitHub"
-    echo "  target-dir   Where to install (default: ./github/skills)"
     echo ""
     echo "Examples:"
     echo "  github-install https://github.com/badlogic/pi-skills/tree/main/browser-tools"
@@ -31,7 +32,6 @@ if [[ $# -lt 1 ]]; then
 fi
 
 GITHUB_URL="$1"
-TARGET_BASE="${2:-./github/skills}"
 
 # Parse GitHub URL
 # Format: https://github.com/owner/repo/tree/branch/path/to/skill
@@ -78,8 +78,13 @@ echo "  Path: $SKILL_PATH"
 echo "  Skill Name: $SKILL_NAME"
 echo ""
 
+# Check if already in config.yml
+if grep -q "^  - $GITHUB_URL$" "$CONFIG_FILE" 2>/dev/null; then
+    echo "Skill already in config.yml, updating..."
+fi
+
 # Create target directory
-mkdir -p "$TARGET_BASE"
+mkdir -p "$GITHUB_SKILLS_DIR"
 
 # Create a temp directory for cloning
 TMPDIR=$(mktemp -d)
@@ -104,12 +109,11 @@ if [[ ! -f "$SKILL_PATH/SKILL.md" ]]; then
 fi
 
 # Copy to target
-TARGET_DIR="$OLDPWD/$TARGET_BASE/$SKILL_NAME"
+TARGET_DIR="$GITHUB_SKILLS_DIR/$SKILL_NAME"
 
 if [[ -d "$TARGET_DIR" ]]; then
-    echo "Skill '$SKILL_NAME' already exists at $TARGET_DIR"
-    echo "Remove it first or use a different target directory."
-    exit 1
+    echo "Updating existing skill at $TARGET_DIR"
+    rm -rf "$TARGET_DIR"
 fi
 
 cp -r "$SKILL_PATH" "$TARGET_DIR"
@@ -118,23 +122,25 @@ cd "$OLDPWD"
 
 echo ""
 echo "✓ Installed '$SKILL_NAME' to $TARGET_DIR"
+
+# Add to config.yml if not already there
+if ! grep -q "^github_skills:" "$CONFIG_FILE" 2>/dev/null; then
+    echo "" >> "$CONFIG_FILE"
+    echo "# GitHub-hosted skills" >> "$CONFIG_FILE"
+    echo "github_skills:" >> "$CONFIG_FILE"
+fi
+
+if ! grep -q "^  - $GITHUB_URL$" "$CONFIG_FILE" 2>/dev/null; then
+    # Add URL under github_skills section
+    sed -i '' "/^github_skills:/a\\
+\  - $GITHUB_URL
+" "$CONFIG_FILE"
+    echo "✓ Added to config.yml"
+fi
+
 echo ""
 echo "To link globally:"
-echo "  ln -sf \"\$(pwd)/$TARGET_BASE/$SKILL_NAME\" ~/.pi/agent/skills/"
+echo "  ln -sf \"$TARGET_DIR\" ~/.pi/agent/skills/"
 echo ""
 echo "To link to a project:"
-echo "  ln -sf \"\$(pwd)/$TARGET_BASE/$SKILL_NAME\" .pi/skills/"
-
-# Create/update a source tracking file
-SOURCE_FILE="$TARGET_DIR/.github-source"
-cat > "$SOURCE_FILE" << EOF
-url: $GITHUB_URL
-owner: $OWNER
-repo: $REPO
-branch: $BRANCH
-path: $SKILL_PATH
-installed: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-EOF
-
-echo ""
-echo "Source tracked in $SOURCE_FILE"
+echo "  ln -sf \"$TARGET_DIR\" .pi/skills/"

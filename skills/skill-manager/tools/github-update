@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Update a skill that was installed from GitHub
-# Usage: github-update <skill-name> [--all]
+# Update skills that were installed from GitHub
+# Usage: github-update [skill-name] [--all]
 #
 # Examples:
 #   github-update browser-tools
@@ -9,44 +9,53 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-GITHUB_SKILLS_DIR="$REPO_DIR/../github/skills"
+REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CONFIG_FILE="$REPO_DIR/config.yml"
+GITHUB_SKILLS_DIR="$REPO_DIR/github/skills"
 
 usage() {
-    echo "Usage: github-update <skill-name> | --all"
+    echo "Usage: github-update [skill-name] | --all"
     echo ""
     echo "Update GitHub-installed skills to the latest version."
     echo ""
     echo "Arguments:"
     echo "  skill-name   Name of the skill to update"
-    echo "  --all        Update all GitHub-installed skills"
+    echo "  --all        Update all GitHub-installed skills (default)"
     exit 1
 }
 
-update_skill() {
-    local skill_name="$1"
-    local skill_dir="$GITHUB_SKILLS_DIR/$skill_name"
-    local source_file="$skill_dir/.github-source"
-
-    if [[ ! -d "$skill_dir" ]]; then
-        echo "Error: Skill '$skill_name' not found at $skill_dir"
+# Parse a GitHub URL and extract components
+parse_github_url() {
+    local url="$1"
+    local url_path="${url#https://github.com/}"
+    
+    OWNER=$(echo "$url_path" | cut -d'/' -f1)
+    REPO=$(echo "$url_path" | cut -d'/' -f2)
+    
+    local remainder
+    if [[ "$url_path" =~ /tree/ ]]; then
+        remainder="${url_path#*/tree/}"
+    elif [[ "$url_path" =~ /blob/ ]]; then
+        remainder="${url_path#*/blob/}"
+    else
         return 1
     fi
+    
+    BRANCH=$(echo "$remainder" | cut -d'/' -f1)
+    SKILL_PATH=$(echo "$remainder" | cut -d'/' -f2-)
+    SKILL_PATH="${SKILL_PATH%/SKILL.md}"
+    SKILL_NAME=$(basename "$SKILL_PATH")
+}
 
-    if [[ ! -f "$source_file" ]]; then
-        echo "Error: No .github-source file found for '$skill_name'"
-        echo "This skill may not have been installed via github-install"
+update_from_url() {
+    local url="$1"
+    
+    if ! parse_github_url "$url"; then
+        echo "Error: Invalid URL format: $url"
         return 1
     fi
-
-    # Read source info
-    local url=$(grep '^url:' "$source_file" | cut -d' ' -f2-)
-    local owner=$(grep '^owner:' "$source_file" | cut -d' ' -f2-)
-    local repo=$(grep '^repo:' "$source_file" | cut -d' ' -f2-)
-    local branch=$(grep '^branch:' "$source_file" | cut -d' ' -f2-)
-    local path=$(grep '^path:' "$source_file" | cut -d' ' -f2-)
-
-    echo "Updating $skill_name from $owner/$repo..."
+    
+    echo "Updating $SKILL_NAME from $OWNER/$REPO..."
 
     # Create temp dir
     local tmpdir=$(mktemp -d)
@@ -55,67 +64,71 @@ update_skill() {
     # Sparse checkout
     cd "$tmpdir"
     git init -q
-    git remote add origin "https://github.com/$owner/$repo.git"
+    git remote add origin "https://github.com/$OWNER/$REPO.git"
     git config core.sparseCheckout true
-    echo "$path" >> .git/info/sparse-checkout
-    git fetch --depth 1 origin "$branch" -q
+    echo "$SKILL_PATH" >> .git/info/sparse-checkout
+    git fetch --depth 1 origin "$BRANCH" -q
     git checkout -q FETCH_HEAD
 
-    if [[ ! -f "$path/SKILL.md" ]]; then
-        echo "Error: SKILL.md no longer exists at $path"
+    if [[ ! -f "$SKILL_PATH/SKILL.md" ]]; then
+        echo "Error: SKILL.md no longer exists at $SKILL_PATH"
         return 1
     fi
 
-    # Remove old skill (except .github-source) and copy new
+    # Remove old skill and copy new
     cd "$OLDPWD"
     
-    # Preserve .github-source
-    cp "$source_file" /tmp/.github-source.bak
-    
-    rm -rf "$skill_dir"
-    cp -r "$tmpdir/$path" "$skill_dir"
-    
-    # Restore and update .github-source
-    cat > "$skill_dir/.github-source" << EOF
-url: $url
-owner: $owner
-repo: $repo
-branch: $branch
-path: $path
-installed: $(grep '^installed:' /tmp/.github-source.bak | cut -d' ' -f2-)
-updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-EOF
+    local target_dir="$GITHUB_SKILLS_DIR/$SKILL_NAME"
+    rm -rf "$target_dir"
+    mkdir -p "$GITHUB_SKILLS_DIR"
+    cp -r "$tmpdir/$SKILL_PATH" "$target_dir"
 
-    rm -f /tmp/.github-source.bak
-
-    echo "✓ Updated $skill_name"
+    echo "✓ Updated $SKILL_NAME"
 }
 
-if [[ $# -lt 1 ]]; then
-    usage
-fi
+update_skill_by_name() {
+    local skill_name="$1"
+    
+    # Find the URL for this skill in config.yml
+    local url=$(grep -E "github\.com/.*/$skill_name\$|github\.com/.*/skills/$skill_name\$" "$CONFIG_FILE" | sed 's/^  - //' | head -1)
+    
+    if [[ -z "$url" ]]; then
+        # Try matching the skill name in the path
+        url=$(grep "github\.com/" "$CONFIG_FILE" | grep "/$skill_name\$\|/$skill_name/\$" | sed 's/^  - //' | head -1)
+    fi
+    
+    if [[ -z "$url" ]]; then
+        echo "Error: Skill '$skill_name' not found in config.yml github_skills section"
+        return 1
+    fi
+    
+    update_from_url "$url"
+}
 
-# Normalize path
-GITHUB_SKILLS_DIR=$(cd "$REPO_DIR/.." && pwd)/github/skills
-
-if [[ ! -d "$GITHUB_SKILLS_DIR" ]]; then
-    echo "No GitHub skills installed at $GITHUB_SKILLS_DIR"
+# Check if github_skills section exists
+if ! grep -q "^github_skills:" "$CONFIG_FILE" 2>/dev/null; then
+    echo "No github_skills section in config.yml"
     exit 0
 fi
 
-if [[ "$1" == "--all" ]]; then
+# Get all GitHub skill URLs
+get_github_urls() {
+    awk '/^github_skills:/,0' "$CONFIG_FILE" | grep "^  - " | sed 's/^  - //'
+}
+
+if [[ $# -lt 1 ]] || [[ "$1" == "--all" ]]; then
     echo "Updating all GitHub-installed skills..."
     echo ""
     
-    for skill_dir in "$GITHUB_SKILLS_DIR"/*/; do
-        if [[ -d "$skill_dir" ]]; then
-            skill_name=$(basename "$skill_dir")
-            update_skill "$skill_name" || true
-            echo ""
-        fi
-    done
+    while IFS= read -r url; do
+        [[ -z "$url" ]] && continue
+        update_from_url "$url" || true
+        echo ""
+    done < <(get_github_urls)
     
     echo "Done."
+elif [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
 else
-    update_skill "$1"
+    update_skill_by_name "$1"
 fi

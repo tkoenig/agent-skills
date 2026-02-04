@@ -21,3 +21,8 @@ global_prompts:
 # Extensions to link globally (~/.pi/agent/extensions/)
 global_extensions:
   - infra-guard
+
+# GitHub-hosted skills
+github_skills:
+  - https://github.com/badlogic/pi-skills/tree/main/browser-tools
+  - https://github.com/mitsuhiko/agent-stuff/tree/main/skills/openscad
