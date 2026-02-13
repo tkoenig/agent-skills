@@ -1,48 +1,90 @@
 ---
-description: Show recent git commits by other team members (excludes your own commits)
+description: Sync repo and show recent changes (commits, PRs, issues)
 ---
 
-Show me recent changes made by other team members (not by me).
+Sync the repository and show me recent changes — commits by others, merged PRs, and recent issues.
 
 ## Steps
 
-1. Get the current git user name:
-   ```bash
-   git config user.name
-   ```
+### 1. Sync the repository
 
-2. Find the date of your last commit from before today (to determine "since when"):
-   ```bash
-   git log --author="<current_user>" --before="midnight" --format="%ci" -1
-   ```
-   
-   This gives us the timestamp of your most recent commit before today - i.e., "when you last worked on this".
-   
-   If no commits found before today, fall back to 7 days ago.
+```bash
+git sync
+```
 
-3. Find commits by others since that timestamp:
-   ```bash
-   git log --since="<timestamp>" --all --no-merges --author="^(?!<current_user>).*$" --perl-regexp --format="%h %an - %s"
-   ```
+This fetches and rebases to get the latest changes.
 
-4. For each commit, show the stats:
-   ```bash
-   git show <commit_hash> --stat
-   ```
+### 2. Get context
 
-5. Provide a summary grouped by author, with:
-   - Commit message
-   - When it was made (relative time)
-   - Files changed
-   - Brief description of what the change does
+Get the current git user name:
+```bash
+git config user.name
+```
+
+Find the date of your last commit from before today (to determine "since when"):
+```bash
+git log --author="<current_user>" --before="midnight" --format="%ci" -1
+```
+
+If no commits found before today, fall back to 7 days ago. Use this timestamp as `<since>` for all subsequent queries.
+
+### 3. Recent commits by others
+
+Find commits by others since `<since>`:
+```bash
+git log --since="<since>" --all --no-merges --author="^(?!<current_user>).*$" --perl-regexp --format="%h %an - %s (%cr)"
+```
+
+For each commit, show the stats:
+```bash
+git show <commit_hash> --stat
+```
+
+### 4. Recent pull requests
+
+Get all recent PRs (open, merged, closed):
+```bash
+gh pr list --state all --limit 30 --json number,title,author,state,createdAt,mergedAt,updatedAt,url,isDraft
+```
+
+Filter to PRs created or updated since `<since>`. Group them by state (open/draft, merged, closed).
+
+### 5. Recent issues
+
+Show recently updated/created issues:
+```bash
+gh issue list --state all --limit 15 --json number,title,state,author,createdAt,updatedAt,labels --jq '.[] | "#\(.number) [\(.state)] \(.title) (\(.labels | map(.name) | join(", ")))"'
+```
+
+Filter to issues updated since `<since>`.
 
 ## Output format
 
-Start with: "Changes by others since [date] (your last commit before today)"
+Start with: "**Synced and up to date.** Changes since [date] (your last commit before today):"
+
+### Commits by others
 
 Group commits by author, then list each with:
 - **Commit title** (time ago)
 - Files touched
 - Brief summary of the change
+
+### Merged PRs
+
+List each with:
+- **#number: PR title** by author (merged time ago)
+- Brief summary
+
+### Open PRs (for review)
+
+List each with:
+- **#number: PR title** by author (opened/updated time ago) [draft if applicable]
+- Brief summary
+
+### Recent issues
+
+List each with:
+- **#number: Issue title** [state] (labels)
+- Brief summary
 
 End with an overall summary of what's been happening.
