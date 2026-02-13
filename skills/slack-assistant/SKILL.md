@@ -72,3 +72,14 @@ Example:
 • Removes unused helpers - _nice cleanup_
 • See <https://github.com/org/repo/pull/499|PR #499>
 ```
+
+## Shell quoting (important)
+
+When passing `--text` in a shell command, wrap the message in single quotes or `$'...'` so backticks and `$` aren’t executed by the shell. Backticks inside double quotes will trigger command substitution and strip text.
+
+Example:
+```bash
+bash {baseDir}/scripts/slack-assistant dm --user U12345678 --text $'Use `code` and $vars safely.'
+```
+
+If the message contains single quotes, escape them or use a different quoting strategy.
