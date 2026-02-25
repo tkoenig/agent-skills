@@ -6,10 +6,9 @@ description: Manage and list agent skills - both global (~/.pi/agent/skills/) an
 # Skill Manager
 
 Manage agent skills for global use or project-specific use. Use when the user wants to:
-- Install skills from ClawdHub
+- Install or find skills (check local repo first, then ClawdHub)
 - Link/unlink skills globally or to a project
 - List available/installed skills
-- Search for new skills on ClawdHub
 - Set up project-level `.pi/` configuration
 
 ## Finding the Skills Repo
