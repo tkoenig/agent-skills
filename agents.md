@@ -14,6 +14,7 @@ Do this before creating, editing, or validating any skill.
 
 ## Agent Behavior Rules
 
+- When asked to install a skill, first check if it exists locally in this repo's `skills/` directory before searching ClawdHub
 - When installing ClawdHub skills, use the `skill-manager` skill (globally available at `~/.pi/agent/skills/skill-manager/SKILL.md`)
 - When listing skills, use the `skill-manager` skill - it has a tool for this
 - Do NOT automatically symlink or activate skills - let the user decide
