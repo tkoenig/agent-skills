@@ -44,6 +44,15 @@ Format as a table for the user:
 - ✓ (l) = project-linked (.pi/skills/)
 - ✓ (l)(g) = both
 
+## Installing a Skill — Search Order
+
+When asked to install a skill, check these locations **in order** before searching ClawdHub:
+
+1. `$REPO/skills/` — locally authored skills
+2. `$REPO/github/skills/` — previously installed GitHub skills
+
+If a match is found, skip ClawdHub and offer to link it directly.
+
 ## Search ClawdHub for Skills
 
 Search for skills on ClawdHub by keyword or description:
