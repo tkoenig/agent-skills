@@ -183,6 +183,51 @@ def load_base_settings():
         return json.load(f)
 
 
+def find_filaments_json():
+    """Find filaments.json by walking up from cwd to find project root."""
+    d = os.getcwd()
+    while True:
+        candidate = os.path.join(d, "filaments.json")
+        if os.path.exists(candidate):
+            return candidate
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return None
+
+
+def load_filament(filament_name=None):
+    """Load a filament profile from filaments.json. Returns dict of settings to apply, or None."""
+    path = find_filaments_json()
+    if not path:
+        if filament_name:
+            print(f"ERROR: No filaments.json found (searched from cwd upward)", file=sys.stderr)
+            sys.exit(1)
+        return None
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    filaments = data.get("filaments", {})
+    default_name = data.get("default")
+
+    # Use explicit name, or fall back to default
+    name = filament_name or default_name
+    if not name:
+        return None
+
+    if name not in filaments:
+        available = ", ".join(filaments.keys())
+        print(f"ERROR: Unknown filament '{name}'. Available: {available}", file=sys.stderr)
+        sys.exit(1)
+
+    profile = filaments[name]
+    display_name = profile.pop("name", name)
+    print(f"  Filament: {display_name}")
+    return profile
+
+
 def apply_preset(settings, preset_name):
     """Apply a named preset to settings."""
     if preset_name not in PRESETS:
@@ -362,6 +407,15 @@ def main():
         action="store_true",
         help="List common settings and exit",
     )
+    parser.add_argument(
+        "--filament",
+        help="Filament profile name from filaments.json (default: uses 'default' key)",
+    )
+    parser.add_argument(
+        "--list-filaments",
+        action="store_true",
+        help="List available filament profiles and exit",
+    )
 
     args = parser.parse_args()
 
@@ -373,6 +427,23 @@ def main():
             walls = preset.get("wall_loops", "?")
             pattern = preset.get("sparse_infill_pattern", "?")
             print(f"  {name:10s}  layer={layer}mm  infill={density}  walls={walls}  pattern={pattern}")
+        return
+
+    if args.list_filaments:
+        path = find_filaments_json()
+        if not path:
+            print("No filaments.json found (searched from cwd upward)")
+            return
+        with open(path, "r") as f:
+            data = json.load(f)
+        default = data.get("default", "")
+        filaments = data.get("filaments", {})
+        print(f"Available filaments (from {path}):")
+        for key, profile in filaments.items():
+            name = profile.get("name", key)
+            vendor = profile.get("filament_vendor", ["?"])[0]
+            marker = " (default)" if key == default else ""
+            print(f"  {key:25s}  {name} ({vendor}){marker}")
         return
 
     if args.list_settings:
@@ -423,6 +494,12 @@ def main():
 
     # Apply preset
     settings = apply_preset(settings, args.preset)
+
+    # Apply filament profile
+    filament_settings = load_filament(args.filament)
+    if filament_settings:
+        for k, v in filament_settings.items():
+            settings[k] = v
 
     # Apply manual overrides
     if args.setting:

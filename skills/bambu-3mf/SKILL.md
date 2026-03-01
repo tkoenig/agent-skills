@@ -35,7 +35,21 @@ Convert an STL to a BambuStudio-compatible 3MF with print settings:
 # Combine preset + overrides
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --preset strong \
     --setting sparse_infill_density=60%
+
+# Use a specific filament profile
+{baseDir}/tools/create-3mf.sh model.stl model.3mf --filament bambu-pla-basic
+
+# List available filaments
+{baseDir}/tools/create-3mf.sh --list-filaments
 ```
+
+## Filament Profiles
+
+Filament profiles are stored in `filaments.json` in the project root. The tool searches from the current directory upward to find it.
+
+- The `"default"` key sets which filament is used automatically
+- Use `--filament <name>` to override
+- Each profile contains BambuStudio filament settings (vendor, density, temperatures, etc.)
 
 ### Open in BambuStudio
 
