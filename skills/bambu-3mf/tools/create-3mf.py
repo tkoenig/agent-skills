@@ -275,7 +275,7 @@ def validate_settings(settings):
     return settings, warnings
 
 
-def create_3mf(stl_path, output_path, settings):
+def create_3mf(stl_path, output_path, settings, print_sequence="by layer"):
     """Create a BambuStudio-compatible 3MF file."""
     name = os.path.splitext(os.path.basename(stl_path))[0]
 
@@ -359,6 +359,7 @@ def create_3mf(stl_path, output_path, settings):
     <metadata key="plater_id" value="1"/>
     <metadata key="plater_name" value=""/>
     <metadata key="locked" value="false"/>
+    <metadata key="print_sequence" value="{print_sequence}"/>
     <model_instance>
       <metadata key="object_id" value="{obj_id}"/>
       <metadata key="instance_id" value="0"/>
@@ -415,6 +416,11 @@ def main():
         "--list-filaments",
         action="store_true",
         help="List available filament profiles and exit",
+    )
+    parser.add_argument(
+        "--by-object",
+        action="store_true",
+        help="Set print sequence to 'by object' (sequential printing, one object at a time)",
     )
 
     args = parser.parse_args()
@@ -518,7 +524,10 @@ def main():
     print(f"  Support: {'on' if settings.get('enable_support') == '1' else 'off'}")
 
     # Create 3MF
-    create_3mf(args.stl, args.output, settings)
+    print_sequence = "by object" if args.by_object else "by layer"
+    if args.by_object:
+        print(f"  Print sequence: by object (sequential)")
+    create_3mf(args.stl, args.output, settings, print_sequence=print_sequence)
     print("✅ Done!")
 
 

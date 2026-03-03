@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+# Create a BambuStudio-compatible 3MF file using the BambuStudio CLI backend.
+# Supports multiple STL inputs, auto-arrange, auto-orient, and slicing in one step.
+#
+# Usage:
+#   create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]
+#
+# Options:
+#   --preset <name>         Use a preset (default, solid, fast, fine, strong)
+#   --setting key=value     Override a print setting (repeatable)
+#   --filament <name>       Use a specific filament profile
+#   --arrange               Auto-arrange objects on the plate
+#   --orient                Auto-orient objects for best printability
+#   --by-object             Set print sequence to "by object" (sequential)
+#   --slice                 Also slice to gcode.3mf in one step
+#   --list-presets          Show available presets
+#   --list-filaments        Show available filament profiles
+#
+# Requires the BambuStudio CLI. Set BAMBU_CLI to override the path.
+#
+# Examples:
+#   create-3mf-cli.sh model.stl model.3mf --preset strong
+#   create-3mf-cli.sh part1.stl part2.stl plate.3mf --preset solid --arrange
+#   create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --by-object --slice
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+
+# --- BambuStudio CLI ---
+DEFAULT_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
+BAMBU_CLI="${BAMBU_CLI:-$DEFAULT_BAMBU_CLI}"
+
+# --- Presets ---
+declare -A PRESET_SETTINGS
+PRESET_SETTINGS[default]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=3 top_shell_layers=4 bottom_shell_layers=3 sparse_infill_density=15% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
+PRESET_SETTINGS[solid]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=4 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=100% sparse_infill_pattern=zig-zag enable_support=0 brim_type=auto_brim"
+PRESET_SETTINGS[fast]="layer_height=0.28 initial_layer_print_height=0.28 wall_loops=2 top_shell_layers=3 bottom_shell_layers=3 sparse_infill_density=10% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
+PRESET_SETTINGS[fine]="layer_height=0.12 initial_layer_print_height=0.12 wall_loops=3 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=15% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
+PRESET_SETTINGS[strong]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=5 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=40% sparse_infill_pattern=cubic enable_support=0 brim_type=auto_brim"
+
+# --- Parse arguments ---
+STL_FILES=()
+OUTPUT=""
+PRESET="default"
+SETTINGS=()
+FILAMENT=""
+ARRANGE=0
+ORIENT=0
+BY_OBJECT=0
+SLICE=0
+LIST_PRESETS=0
+LIST_FILAMENTS=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --preset)
+            PRESET="$2"; shift 2 ;;
+        --setting)
+            SETTINGS+=("$2"); shift 2 ;;
+        --filament)
+            FILAMENT="$2"; shift 2 ;;
+        --arrange)
+            ARRANGE=1; shift ;;
+        --orient)
+            ORIENT=1; shift ;;
+        --by-object)
+            BY_OBJECT=1; shift ;;
+        --slice)
+            SLICE=1; shift ;;
+        --list-presets)
+            LIST_PRESETS=1; shift ;;
+        --list-filaments)
+            LIST_FILAMENTS=1; shift ;;
+        -h|--help)
+            echo "Usage: create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]"
+            echo ""
+            echo "Create a BambuStudio 3MF from one or more STL files using the BambuStudio CLI."
+            echo ""
+            echo "Options:"
+            echo "  --preset <name>      Preset: default, solid, fast, fine, strong"
+            echo "  --setting key=value  Override setting (repeatable)"
+            echo "  --filament <name>    Filament profile from filaments.json"
+            echo "  --arrange            Auto-arrange objects on the plate"
+            echo "  --orient             Auto-orient objects"
+            echo "  --by-object          Sequential printing (one object at a time)"
+            echo "  --slice              Also slice to .gcode.3mf"
+            echo "  --list-presets       Show available presets"
+            echo "  --list-filaments     Show available filament profiles"
+            exit 0
+            ;;
+        *.stl|*.STL)
+            STL_FILES+=("$1"); shift ;;
+        *.3mf|*.3MF)
+            OUTPUT="$1"; shift ;;
+        *)
+            echo "ERROR: Unknown argument: $1" >&2
+            exit 1 ;;
+    esac
+done
+
+# --- List commands ---
+if [ "$LIST_PRESETS" = "1" ]; then
+    echo "Available presets:"
+    echo "  default    0.2mm, 15% gyroid, 3 walls     General purpose"
+    echo "  solid      0.2mm, 100% zig-zag, 4 walls   Solid functional parts"
+    echo "  fast       0.28mm, 10% gyroid, 2 walls     Quick prototypes"
+    echo "  fine       0.12mm, 15% gyroid, 3 walls     Decorative parts"
+    echo "  strong     0.2mm, 40% cubic, 5 walls       Load-bearing parts"
+    exit 0
+fi
+
+if [ "$LIST_FILAMENTS" = "1" ]; then
+    python3 "$SCRIPT_DIR/create-3mf.py" --list-filaments
+    exit 0
+fi
+
+# --- Validate ---
+if [ ${#STL_FILES[@]} -eq 0 ] || [ -z "$OUTPUT" ]; then
+    echo "Usage: create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]"
+    echo "Run with --help for details."
+    exit 1
+fi
+
+if [ ! -x "$BAMBU_CLI" ]; then
+    echo "ERROR: BambuStudio CLI not found at: $BAMBU_CLI" >&2
+    echo "Falling back to Python-based create-3mf.sh..." >&2
+    # Fall back to Python tool (single STL only)
+    if [ ${#STL_FILES[@]} -gt 1 ]; then
+        echo "ERROR: Multiple STLs require the BambuStudio CLI." >&2
+        exit 1
+    fi
+    FALLBACK_ARGS=("${STL_FILES[0]}" "$OUTPUT" --preset "$PRESET")
+    [ -n "$FILAMENT" ] && FALLBACK_ARGS+=(--filament "$FILAMENT")
+    [ "$BY_OBJECT" = "1" ] && FALLBACK_ARGS+=(--by-object)
+    for s in "${SETTINGS[@]}"; do FALLBACK_ARGS+=(--setting "$s"); done
+    exec "$SCRIPT_DIR/create-3mf.sh" "${FALLBACK_ARGS[@]}"
+fi
+
+for f in "${STL_FILES[@]}"; do
+    if [ ! -f "$f" ]; then
+        echo "ERROR: STL file not found: $f" >&2
+        exit 1
+    fi
+done
+
+# Make output path absolute
+case "$OUTPUT" in
+    /*) ABS_OUTPUT="$OUTPUT" ;;
+    *) ABS_OUTPUT="$(pwd)/$OUTPUT" ;;
+esac
+
+# --- Find filaments.json ---
+find_filaments_json() {
+    local d="$(pwd)"
+    while true; do
+        if [ -f "$d/filaments.json" ]; then
+            echo "$d/filaments.json"
+            return
+        fi
+        local parent="$(dirname "$d")"
+        [ "$parent" = "$d" ] && return
+        d="$parent"
+    done
+}
+
+# --- Build settings files ---
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
+
+# Base settings from our template
+BASE_TEMPLATE="$SKILL_DIR/settings/base_template.json"
+
+python3 - "$BASE_TEMPLATE" "$TMPDIR" "$PRESET" "$FILAMENT" "$(find_filaments_json)" "${SETTINGS[@]}" << 'PYEOF'
+import json, sys, os
+
+base_template = sys.argv[1]
+tmpdir = sys.argv[2]
+preset_name = sys.argv[3]
+filament_name = sys.argv[4] if sys.argv[4] else None
+filaments_path = sys.argv[5] if sys.argv[5] else None
+overrides = sys.argv[6:]
+
+# Presets
+PRESETS = {
+    "default": {"layer_height": "0.2", "initial_layer_print_height": "0.2", "wall_loops": "3",
+                "top_shell_layers": "4", "bottom_shell_layers": "3", "sparse_infill_density": "15%",
+                "sparse_infill_pattern": "gyroid", "enable_support": "0", "brim_type": "auto_brim"},
+    "solid":   {"layer_height": "0.2", "initial_layer_print_height": "0.2", "wall_loops": "4",
+                "top_shell_layers": "5", "bottom_shell_layers": "5", "sparse_infill_density": "100%",
+                "sparse_infill_pattern": "zig-zag", "enable_support": "0", "brim_type": "auto_brim"},
+    "fast":    {"layer_height": "0.28", "initial_layer_print_height": "0.28", "wall_loops": "2",
+                "top_shell_layers": "3", "bottom_shell_layers": "3", "sparse_infill_density": "10%",
+                "sparse_infill_pattern": "gyroid", "enable_support": "0", "brim_type": "auto_brim"},
+    "fine":    {"layer_height": "0.12", "initial_layer_print_height": "0.12", "wall_loops": "3",
+                "top_shell_layers": "5", "bottom_shell_layers": "5", "sparse_infill_density": "15%",
+                "sparse_infill_pattern": "gyroid", "enable_support": "0", "brim_type": "auto_brim"},
+    "strong":  {"layer_height": "0.2", "initial_layer_print_height": "0.2", "wall_loops": "5",
+                "top_shell_layers": "5", "bottom_shell_layers": "5", "sparse_infill_density": "40%",
+                "sparse_infill_pattern": "cubic", "enable_support": "0", "brim_type": "auto_brim"},
+}
+
+# Load base template
+with open(base_template) as f:
+    settings = json.load(f)
+
+# Apply preset
+if preset_name in PRESETS:
+    settings.update(PRESETS[preset_name])
+
+# Apply overrides
+for o in overrides:
+    if "=" in o:
+        k, v = o.split("=", 1)
+        settings[k] = v
+
+# Validate 100% infill pattern
+if settings.get("sparse_infill_density") == "100%":
+    bad = ["cubic", "gyroid", "honeycomb", "adaptivecubic", "3dhoneycomb", "hilbertcurve", "lightning"]
+    if settings.get("sparse_infill_pattern") in bad:
+        settings["sparse_infill_pattern"] = "zig-zag"
+        print(f"  ⚠️  Changed infill pattern to zig-zag (required for 100%)", file=sys.stderr)
+
+# Write process settings
+process = dict(settings)
+process["from"] = "system"
+process["type"] = "process"
+process["name"] = f"0.{int(float(settings.get('layer_height', '0.2')) * 100):02d}mm Strong @BBL A1"
+process["compatible_printers"] = ["Bambu Lab A1 0.4 nozzle"]
+with open(os.path.join(tmpdir, "process.json"), "w") as f:
+    json.dump(process, f, indent=2)
+
+# Write machine settings (subset of base template with printer-specific keys)
+machine_keys = [k for k in settings if any(k.startswith(p) for p in [
+    "machine_", "printer_", "nozzle_", "printable_", "bed_", "curr_bed",
+    "extruder_", "retract", "wipe", "z_hop"
+])]
+machine = {k: settings[k] for k in machine_keys}
+machine["from"] = "system"
+machine["type"] = "machine"
+machine["name"] = settings.get("printer_settings_id", "Bambu Lab A1 0.4 nozzle")
+with open(os.path.join(tmpdir, "machine.json"), "w") as f:
+    json.dump(machine, f, indent=2)
+
+# Write filament settings
+filament_display = None
+if filaments_path and os.path.exists(filaments_path):
+    with open(filaments_path) as f:
+        fdata = json.load(f)
+    filaments = fdata.get("filaments", {})
+    fname = filament_name or fdata.get("default")
+    if fname and fname in filaments:
+        profile = dict(filaments[fname])
+        filament_display = profile.pop("name", fname)
+        profile["from"] = "system"
+        profile["type"] = "filament"
+        profile["name"] = filament_display
+        with open(os.path.join(tmpdir, "filament.json"), "w") as f:
+            json.dump(profile, f, indent=2)
+
+# Print summary
+layer = settings.get("layer_height", "?")
+density = settings.get("sparse_infill_density", "?")
+pattern = settings.get("sparse_infill_pattern", "?")
+walls = settings.get("wall_loops", "?")
+support = "on" if settings.get("enable_support") == "1" else "off"
+print(f"  Preset: {preset_name}", file=sys.stderr)
+if filament_display:
+    print(f"  Filament: {filament_display}", file=sys.stderr)
+print(f"  Layer height: {layer}mm", file=sys.stderr)
+print(f"  Infill: {density} ({pattern})", file=sys.stderr)
+print(f"  Walls: {walls}", file=sys.stderr)
+print(f"  Support: {support}", file=sys.stderr)
+PYEOF
+
+# --- Build CLI command ---
+CLI_ARGS=()
+
+# Add STL files (absolute paths)
+for f in "${STL_FILES[@]}"; do
+    case "$f" in
+        /*) CLI_ARGS+=("$f") ;;
+        *) CLI_ARGS+=("$(pwd)/$f") ;;
+    esac
+done
+
+# Settings (process + machine)
+CLI_ARGS+=(--load-settings "$TMPDIR/process.json;$TMPDIR/machine.json")
+[ -f "$TMPDIR/filament.json" ] && CLI_ARGS+=(--load-filaments "$TMPDIR/filament.json")
+
+# Always ensure objects sit on bed
+CLI_ARGS+=(--ensure-on-bed)
+
+# Options
+[ "$ARRANGE" = "1" ] && CLI_ARGS+=(--arrange 1)
+[ "$ORIENT" = "1" ] && CLI_ARGS+=(--orient 1)
+
+# Slice or just export
+if [ "$SLICE" = "1" ]; then
+    GCODE_OUTPUT="${ABS_OUTPUT%.3mf}.gcode.3mf"
+    CLI_ARGS+=(--slice 0 --export-3mf "$GCODE_OUTPUT")
+else
+    CLI_ARGS+=(--export-3mf "$ABS_OUTPUT")
+fi
+
+# --- Print header ---
+echo "Creating 3MF (CLI): ${STL_FILES[*]} → $(basename "$OUTPUT")"
+[ "$ARRANGE" = "1" ] && echo "  Auto-arrange: on"
+[ "$ORIENT" = "1" ] && echo "  Auto-orient: on"
+[ "$BY_OBJECT" = "1" ] && echo "  Print sequence: by object"
+[ "$SLICE" = "1" ] && echo "  Slice: yes → $(basename "$GCODE_OUTPUT")"
+
+# --- Run BambuStudio CLI ---
+"$BAMBU_CLI" "${CLI_ARGS[@]}" 2>&1 | grep -v "^\[.*\] \[.*\] \[trace\]" >&2 || true
+EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "ERROR: BambuStudio CLI exited with code $EXIT_CODE" >&2
+    exit $EXIT_CODE
+fi
+
+# --- Post-process: inject print_sequence if --by-object ---
+if [ "$BY_OBJECT" = "1" ]; then
+    TARGET="$ABS_OUTPUT"
+    [ "$SLICE" = "1" ] && TARGET="$GCODE_OUTPUT"
+
+    if [ -f "$TARGET" ]; then
+        python3 - "$TARGET" << 'PYEOF'
+import sys, zipfile, tempfile, shutil, os
+
+path = sys.argv[1]
+tmppath = path + ".tmp"
+
+with zipfile.ZipFile(path, "r") as zin, zipfile.ZipFile(tmppath, "w") as zout:
+    for item in zin.infolist():
+        data = zin.read(item.filename)
+        if item.filename == "Metadata/model_settings.config":
+            text = data.decode("utf-8")
+            # Insert print_sequence after locked metadata
+            text = text.replace(
+                '<metadata key="locked" value="false"/>',
+                '<metadata key="locked" value="false"/>\n    <metadata key="print_sequence" value="by object"/>'
+            )
+            data = text.encode("utf-8")
+            item.file_size = len(data)
+        zout.writestr(item, data)
+
+shutil.move(tmppath, path)
+PYEOF
+    fi
+fi
+
+# --- Summary ---
+if [ "$SLICE" = "1" ]; then
+    if [ -f "$GCODE_OUTPUT" ]; then
+        SIZE=$(stat -f%z "$GCODE_OUTPUT" 2>/dev/null || stat -c%s "$GCODE_OUTPUT" 2>/dev/null)
+        echo "✅ Done: $(basename "$GCODE_OUTPUT") ($(( SIZE / 1024 ))KB)"
+    fi
+    # Also export the non-sliced 3MF for reference
+    if [ -f "$ABS_OUTPUT" ]; then
+        SIZE=$(stat -f%z "$ABS_OUTPUT" 2>/dev/null || stat -c%s "$ABS_OUTPUT" 2>/dev/null)
+        echo "   Also: $(basename "$ABS_OUTPUT") ($(( SIZE / 1024 ))KB)"
+    fi
+else
+    if [ -f "$ABS_OUTPUT" ]; then
+        SIZE=$(stat -f%z "$ABS_OUTPUT" 2>/dev/null || stat -c%s "$ABS_OUTPUT" 2>/dev/null)
+        echo "✅ Done: $(basename "$ABS_OUTPUT") ($(( SIZE / 1024 ))KB)"
+    fi
+fi

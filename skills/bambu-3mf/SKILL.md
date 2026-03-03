@@ -15,9 +15,33 @@ Create BambuStudio-compatible 3MF project files from STL models with embedded pr
 
 ## Tools
 
-### Create 3MF
+### Create 3MF (CLI backend — recommended)
 
-Convert an STL to a BambuStudio-compatible 3MF with print settings:
+Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto-arrange, auto-orient, and slicing in one step.
+
+```bash
+# Single STL with preset
+{baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --preset strong
+
+# Multiple STLs, auto-arranged on one plate
+{baseDir}/tools/create-3mf-cli.sh part1.stl part2.stl plate.3mf --preset solid --arrange
+
+# Full pipeline: arrange + sequential print + slice in one step
+{baseDir}/tools/create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --by-object --slice
+
+# With specific filament and auto-orient
+{baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --preset strong --filament esun-petg-basic --orient
+
+# List presets or filaments
+{baseDir}/tools/create-3mf-cli.sh --list-presets
+{baseDir}/tools/create-3mf-cli.sh --list-filaments
+```
+
+Falls back to the Python-based tool for single STL if CLI is unavailable.
+
+### Create 3MF (Python fallback)
+
+Python-based 3MF creation using lib3mf. Works without BambuStudio CLI but only supports single STL input.
 
 ```bash
 # Default settings (0.2mm, 15% gyroid infill, 3 walls)
@@ -26,15 +50,21 @@ Convert an STL to a BambuStudio-compatible 3MF with print settings:
 # Use a preset
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --preset solid
 
+# Auto-orient for optimal print orientation (e.g. parts with overhangs)
+{baseDir}/tools/create-3mf.sh model.stl model.3mf --orient
+
+# Sequential printing (one object at a time)
+{baseDir}/tools/create-3mf.sh model.stl model.3mf --by-object
+
 # Custom settings
 {baseDir}/tools/create-3mf.sh model.stl model.3mf \
     --setting layer_height=0.12 \
     --setting sparse_infill_density=100% \
     --setting wall_loops=4
 
-# Combine preset + overrides
+# Combine preset + overrides + orient
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --preset strong \
-    --setting sparse_infill_density=60%
+    --setting sparse_infill_density=60% --orient
 
 # Use a specific filament profile
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --filament bambu-pla-basic
@@ -56,6 +86,26 @@ Filament profiles are stored in `filaments.json` in the project root. The tool s
 ```bash
 {baseDir}/tools/open-bambu.sh model.3mf
 ```
+
+### Slice via CLI
+
+Slice a 3MF to a `.gcode.3mf` using the patched BambuStudio CLI:
+
+```bash
+# Slice — output defaults to model.gcode.3mf
+{baseDir}/tools/slice-3mf.sh model.3mf
+
+# Explicit output path
+{baseDir}/tools/slice-3mf.sh model.3mf output/model.gcode.3mf
+
+# Auto-orient for optimal print orientation (e.g. drainage inserts)
+{baseDir}/tools/slice-3mf.sh model.3mf --orient
+
+# Auto-arrange multiple objects on the plate
+{baseDir}/tools/slice-3mf.sh model.3mf --arrange
+```
+
+Uses a custom BambuStudio build with CLI fixes. Set `BAMBU_CLI` to override the binary path.
 
 ### List Presets & Settings
 
@@ -109,10 +159,13 @@ This skill integrates with the OpenSCAD skill for end-to-end model creation:
 # 1. Design in OpenSCAD → STL
 .pi/skills/openscad/tools/export-stl.sh model.scad model.stl
 
-# 2. STL → 3MF with print settings
-.pi/skills/bambu-3mf/tools/create-3mf.sh model.stl model.3mf --preset solid
+# 2. STL → 3MF with print settings (CLI backend, recommended)
+.pi/skills/bambu-3mf/tools/create-3mf-cli.sh model.stl model.3mf --preset solid --orient
 
-# 3. Open in BambuStudio → Slice & Print
+# 2b. Multiple STLs on one plate, arranged and sliced in one step
+.pi/skills/bambu-3mf/tools/create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --slice
+
+# 3. Or open in BambuStudio GUI → Slice & Print
 .pi/skills/bambu-3mf/tools/open-bambu.sh model.3mf
 ```
 
@@ -129,8 +182,24 @@ To update the template with your own defaults:
 
 A BambuStudio 3MF is a ZIP file containing:
 - `3D/3dmodel.model` — Mesh data (vertices + triangles) with BambuStudio metadata
-- `Metadata/project_settings.config` — Full print settings as JSON
-- `Metadata/model_settings.config` — Object placement and plate assignment
+- `Metadata/project_settings.config` — Full print settings as JSON (global)
+- `Metadata/model_settings.config` — Object placement, plate assignment, and per-plate overrides
+
+### Print Sequence (By Object vs By Layer)
+
+`print_sequence` is a **plate-level** setting stored in `model_settings.config`, NOT in `project_settings.config`. BambuStudio stores it as a `<metadata>` inside the `<plate>` element:
+
+```xml
+<plate>
+  <metadata key="plater_id" value="1"/>
+  <metadata key="print_sequence" value="by object"/>
+  ...
+</plate>
+```
+
+The `print_sequence` key in `project_settings.config` is only the global default (`by layer`). The plate-level value takes precedence. This means the CLI tool's `--setting print_sequence=...` won't work — it would only change the global default, not the plate override. Set print sequence via BambuStudio GUI (Plate Settings dialog) instead.
+
+**Sequential printing constraints (A1):** "By Object" prints each object completely before starting the next. Objects must be spaced far enough apart (front to back) for printhead clearance. Arrange shorter objects in front. Use `--by-object` flag when creating 3MF files.
 
 The key to BambuStudio recognizing the 3MF as its own project is the metadata:
 ```xml
@@ -139,3 +208,13 @@ The key to BambuStudio recognizing the 3MF as its own project is the metadata:
 ```
 
 This skill uses the official `lib3mf` library for standards-compliant 3MF generation, then adds BambuStudio-proprietary metadata as attachments.
+
+## Custom BambuStudio CLI Build
+
+The CLI tools use a custom BambuStudio build with fixes for macOS CLI mode (stock BambuStudio segfaults — [#4627](https://github.com/bambulab/BambuStudio/issues/4627), [#9636](https://github.com/bambulab/BambuStudio/issues/9636)).
+
+**Build location:** `~/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio`
+
+**Source:** `~/Development/tkoenig/playground/bambustudio/` (cloned from `github.com/bambulab/BambuStudio`)
+
+Set `BAMBU_CLI` env var to override the binary path in any tool.
