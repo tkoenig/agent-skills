@@ -238,6 +238,20 @@ sentry issues list --help
 sentry issues resolve --help
 ```
 
+## Status Page
+
+Check Sentry's operational status and recent incidents:
+
+```bash
+# Recent incident history (RSS feed)
+curl -s https://status.sentry.io/history.rss
+
+# Current status page
+# https://status.sentry.io
+```
+
+Useful when investigating 403s, timeouts, or ingestion failures that may be on Sentry's side.
+
 ## Troubleshooting
 
 ### "Invalid token" or 401 Errors
