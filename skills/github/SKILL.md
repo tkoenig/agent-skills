@@ -9,6 +9,18 @@ Use the `gh` CLI to interact with GitHub. Always specify `--repo owner/repo` whe
 
 ## Pull Requests
 
+For PR descriptions, prefer `--body-file` (avoid inline `--body "..."` for markdown with backticks/shell-sensitive characters).
+
+Create PR with a body file:
+```bash
+gh pr create --title "Your title" --body-file /tmp/pr_body.md
+```
+
+Update PR body with a body file:
+```bash
+gh pr edit 55 --body-file /tmp/pr_body.md --repo owner/repo
+```
+
 Check CI status on a PR:
 ```bash
 gh pr checks 55 --repo owner/repo
