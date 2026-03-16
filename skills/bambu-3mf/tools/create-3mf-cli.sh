@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create a BambuStudio-compatible 3MF file using the BambuStudio CLI backend.
-# Supports multiple STL inputs, auto-arrange, auto-orient, and slicing in one step.
+# Supports multiple STL inputs, auto-arrange, auto-orient, plate naming, and slicing in one step.
 #
 # Usage:
 #   create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]
@@ -12,6 +12,7 @@
 #   --arrange               Auto-arrange objects on the plate
 #   --orient                Auto-orient objects for best printability
 #   --by-object             Set print sequence to "by object" (sequential)
+#   --plate-names "A;B"     Set per-plate names shown in BambuStudio
 #   --slice                 Also slice to gcode.3mf in one step
 #   --list-presets          Show available presets
 #   --list-filaments        Show available filament profiles
@@ -20,7 +21,9 @@
 #
 # Examples:
 #   create-3mf-cli.sh model.stl model.3mf --preset strong
+#   create-3mf-cli.sh model.stl model.3mf --plate-names "Front"
 #   create-3mf-cli.sh part1.stl part2.stl plate.3mf --preset solid --arrange
+#   create-3mf-cli.sh part1.stl part2.stl plate.3mf --plate-names "Front;Back" --arrange
 #   create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --by-object --slice
 
 set -e
@@ -49,6 +52,7 @@ ARRANGE=0
 ORIENT=0
 BY_OBJECT=0
 SLICE=0
+PLATE_NAMES=""
 LIST_PRESETS=0
 LIST_FILAMENTS=0
 
@@ -66,6 +70,8 @@ while [ $# -gt 0 ]; do
             ORIENT=1; shift ;;
         --by-object)
             BY_OBJECT=1; shift ;;
+        --plate-names)
+            PLATE_NAMES="$2"; shift 2 ;;
         --slice)
             SLICE=1; shift ;;
         --list-presets)
@@ -84,6 +90,7 @@ while [ $# -gt 0 ]; do
             echo "  --arrange            Auto-arrange objects on the plate"
             echo "  --orient             Auto-orient objects"
             echo "  --by-object          Sequential printing (one object at a time)"
+            echo "  --plate-names A;B    Set per-plate names shown in BambuStudio"
             echo "  --slice              Also slice to .gcode.3mf"
             echo "  --list-presets       Show available presets"
             echo "  --list-filaments     Show available filament profiles"
@@ -133,6 +140,13 @@ if [ ! -x "$BAMBU_CLI" ]; then
     FALLBACK_ARGS=("${STL_FILES[0]}" "$OUTPUT" --preset "$PRESET")
     [ -n "$FILAMENT" ] && FALLBACK_ARGS+=(--filament "$FILAMENT")
     [ "$BY_OBJECT" = "1" ] && FALLBACK_ARGS+=(--by-object)
+    if [ -n "$PLATE_NAMES" ]; then
+        if [[ "$PLATE_NAMES" == *";"* ]]; then
+            echo "ERROR: Multiple plate names require the BambuStudio CLI." >&2
+            exit 1
+        fi
+        FALLBACK_ARGS+=(--plate-name "$PLATE_NAMES")
+    fi
     for s in "${SETTINGS[@]}"; do FALLBACK_ARGS+=(--setting "$s"); done
     exec "$SCRIPT_DIR/create-3mf.sh" "${FALLBACK_ARGS[@]}"
 fi
@@ -308,6 +322,7 @@ echo "Creating 3MF (CLI): ${STL_FILES[*]} → $(basename "$OUTPUT")"
 [ "$ARRANGE" = "1" ] && echo "  Auto-arrange: on"
 [ "$ORIENT" = "1" ] && echo "  Auto-orient: on"
 [ "$BY_OBJECT" = "1" ] && echo "  Print sequence: by object"
+[ -n "$PLATE_NAMES" ] && echo "  Plate names: $PLATE_NAMES"
 [ "$SLICE" = "1" ] && echo "  Slice: yes → $(basename "$GCODE_OUTPUT")"
 
 # --- Run BambuStudio CLI ---
@@ -319,36 +334,18 @@ if [ $EXIT_CODE -ne 0 ]; then
     exit $EXIT_CODE
 fi
 
-# --- Post-process: inject print_sequence if --by-object ---
-if [ "$BY_OBJECT" = "1" ]; then
-    TARGET="$ABS_OUTPUT"
-    [ "$SLICE" = "1" ] && TARGET="$GCODE_OUTPUT"
+# --- Post-process: plate names + print sequence ---
+PATCH_ARGS=(--auto-plate-names)
+[ "$BY_OBJECT" = "1" ] && PATCH_ARGS+=(--print-sequence "by object")
+[ -n "$PLATE_NAMES" ] && PATCH_ARGS+=(--plate-names "$PLATE_NAMES")
 
-    if [ -f "$TARGET" ]; then
-        python3 - "$TARGET" << 'PYEOF'
-import sys, zipfile, tempfile, shutil, os
+TARGETS=()
+[ -f "$ABS_OUTPUT" ] && TARGETS+=("$ABS_OUTPUT")
+[ "$SLICE" = "1" ] && [ -f "$GCODE_OUTPUT" ] && TARGETS+=("$GCODE_OUTPUT")
 
-path = sys.argv[1]
-tmppath = path + ".tmp"
-
-with zipfile.ZipFile(path, "r") as zin, zipfile.ZipFile(tmppath, "w") as zout:
-    for item in zin.infolist():
-        data = zin.read(item.filename)
-        if item.filename == "Metadata/model_settings.config":
-            text = data.decode("utf-8")
-            # Insert print_sequence after locked metadata
-            text = text.replace(
-                '<metadata key="locked" value="false"/>',
-                '<metadata key="locked" value="false"/>\n    <metadata key="print_sequence" value="by object"/>'
-            )
-            data = text.encode("utf-8")
-            item.file_size = len(data)
-        zout.writestr(item, data)
-
-shutil.move(tmppath, path)
-PYEOF
-    fi
-fi
+for TARGET in "${TARGETS[@]}"; do
+    python3 "$SCRIPT_DIR/patch-3mf-metadata.py" "$TARGET" "${PATCH_ARGS[@]}"
+done
 
 # --- Summary ---
 if [ "$SLICE" = "1" ]; then

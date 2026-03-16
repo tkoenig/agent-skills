@@ -10,6 +10,7 @@
 #   --setting key=value     Override a print setting (repeatable)
 #   --orient                Auto-orient model for optimal print orientation
 #   --filament <name>       Use a specific filament profile
+#   --plate-name <name>     Set the plate name shown in BambuStudio
 #   --list-presets          Show available presets
 #   --list-settings         Show common settings
 #   --list-filaments        Show available filament profiles
@@ -17,6 +18,7 @@
 # Examples:
 #   create-3mf.sh model.stl model.3mf
 #   create-3mf.sh model.stl model.3mf --preset solid
+#   create-3mf.sh model.stl model.3mf --plate-name "Front"
 #   create-3mf.sh model.stl model.3mf --orient
 #   create-3mf.sh model.stl model.3mf --setting layer_height=0.12 --setting wall_loops=4
 

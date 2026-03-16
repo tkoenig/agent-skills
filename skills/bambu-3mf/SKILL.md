@@ -17,14 +17,20 @@ Create BambuStudio-compatible 3MF project files from STL models with embedded pr
 
 ### Create 3MF (CLI backend — recommended)
 
-Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto-arrange, auto-orient, and slicing in one step.
+Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto-arrange, auto-orient, plate naming, and slicing in one step.
 
 ```bash
 # Single STL with preset
 {baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --preset strong
 
-# Multiple STLs, auto-arranged on one plate
+# Single STL with a custom plate name
+{baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --plate-names "Front"
+
+# Multiple STLs, auto-arranged on one or more plates
 {baseDir}/tools/create-3mf-cli.sh part1.stl part2.stl plate.3mf --preset solid --arrange
+
+# Multiple STLs with explicit per-plate names
+{baseDir}/tools/create-3mf-cli.sh front.stl back.stl drawer.3mf --arrange --plate-names "Front;Back"
 
 # Full pipeline: arrange + sequential print + slice in one step
 {baseDir}/tools/create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --by-object --slice
@@ -37,6 +43,8 @@ Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto
 {baseDir}/tools/create-3mf-cli.sh --list-filaments
 ```
 
+If `--plate-names` is omitted, the tool auto-fills plate names from the STL basenames whenever it can determine a sensible one-object-per-plate mapping.
+
 Falls back to the Python-based tool for single STL if CLI is unavailable.
 
 ### Create 3MF (Python fallback)
@@ -46,6 +54,9 @@ Python-based 3MF creation using lib3mf. Works without BambuStudio CLI but only s
 ```bash
 # Default settings (0.2mm, 15% gyroid infill, 3 walls)
 {baseDir}/tools/create-3mf.sh model.stl model.3mf
+
+# Set a custom plate name
+{baseDir}/tools/create-3mf.sh model.stl model.3mf --plate-name "Front"
 
 # Use a preset
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --preset solid
@@ -147,6 +158,39 @@ Use `--setting key=value` to override any setting. Most useful ones:
 - `brim_type` — auto_brim, brim_outer_only, no_brim
 - `brim_width` — Brim width in mm
 
+### Ironing
+
+Ironing smooths top surfaces by making an extra nozzle pass with low flow after printing. The nozzle stays at the same Z height, softening the surface with heat while a small amount of material fills gaps between lines.
+
+**Settings:**
+- `ironing_type` — Ironing mode (see types below). Default: `no ironing`
+- `ironing_flow` — Extrusion flow during ironing, relative to normal flow. Too low = gaps, too high = blobs. Calibrate per filament.
+- `ironing_speed` — Nozzle speed during ironing (mm/s). Slower = smoother but more time + heat creep risk.
+- `ironing_pattern` — `zig-zag` (default, recommended) or `concentric`
+- `ironing_spacing` — Line spacing in mm (default: `0.15`). Should be smaller than nozzle diameter for overlap.
+- `ironing_direction` — Angle relative to top pattern lines. `45`° usually gives best results.
+- `ironing_inset` — Distance (mm) between ironing area and edges. Helps avoid material buildup at edges. `0` = disabled.
+
+**Ironing types:**
+
+| Type | 3MF value | Description |
+|------|-----------|-------------|
+| No ironing | `no ironing` | Off (default) |
+| Top surfaces | `top` | Irons all top-facing surfaces at every layer (steps, shelves, intermediate flat areas) |
+| Topmost surface | `topmost` | Irons only the highest top surface of the model — best default for most prints |
+| All solid layer | `all solid` | Irons every solid layer including internal ones — rarely useful, adds huge time |
+
+**When to use ironing:**
+- ✅ Flat top surfaces (lids, signs, nameplates, boxes)
+- ❌ Curved top surfaces (ironing can't smooth inter-layer lines on curves)
+
+**Caveats:**
+- Adds print time, especially on large top surfaces
+- Risk of heat creep at slow speeds with PLA/PETG/TPU
+- Model must be well-adhered to build plate (nozzle exerts force during ironing)
+
+**Calibration:** Use the [Ironing Calibration Tool](https://makerworld.com/en/models/1038295-ironing-calibration) to find optimal flow/speed per filament. It prints a 5×5 grid testing speed (20–60 mm/s) × flow (5–25%). Store calibrated values in `filaments.json` per filament profile.
+
 ### Printer
 - `printer_model` — e.g. "Bambu Lab A1", "Bambu Lab X1 Carbon"
 - `curr_bed_type` — "Textured PEI Plate", "Cool Plate", "High Temp Plate"
@@ -218,3 +262,8 @@ The CLI tools use a custom BambuStudio build with fixes for macOS CLI mode (stoc
 **Source:** `~/Development/tkoenig/playground/bambustudio/` (cloned from `github.com/bambulab/BambuStudio`)
 
 Set `BAMBU_CLI` env var to override the binary path in any tool.
+
+## Related Skills
+
+- **openscad** (`.pi/skills/openscad/`) — Design `.scad` models and export STLs. See "Workflow with OpenSCAD Skill" above.
+- **gridfinity** (`.pi/skills/gridfinity/`) — Gridfinity-specific print settings (layer height, walls, fan overrides) and anti-warp strategies. Load this skill when creating 3MF files for gridfinity baseplates or bins.

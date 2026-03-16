@@ -9,6 +9,9 @@ Examples:
     # Basic usage with defaults
     python3 create-3mf.py model.stl model.3mf
 
+    # Set a custom plate name
+    python3 create-3mf.py model.stl model.3mf --plate-name "Front"
+
     # Custom print settings
     python3 create-3mf.py model.stl model.3mf \
         --setting layer_height=0.12 \
@@ -30,6 +33,7 @@ import json
 import os
 import struct
 import sys
+from xml.sax.saxutils import escape
 
 try:
     import lib3mf
@@ -99,6 +103,10 @@ PRESETS = {
         "brim_type": "auto_brim",
     },
 }
+
+
+def xml_escape_attr(value):
+    return escape(value, {'"': '&quot;', "'": '&apos;'})
 
 
 def parse_ascii_stl(path):
@@ -275,9 +283,10 @@ def validate_settings(settings):
     return settings, warnings
 
 
-def create_3mf(stl_path, output_path, settings, print_sequence="by layer"):
+def create_3mf(stl_path, output_path, settings, print_sequence="by layer", plate_name=None):
     """Create a BambuStudio-compatible 3MF file."""
     name = os.path.splitext(os.path.basename(stl_path))[0]
+    plate_name = plate_name or name
 
     # Parse STL
     vertices, triangles = parse_stl(stl_path)
@@ -345,21 +354,24 @@ def create_3mf(stl_path, output_path, settings, print_sequence="by layer"):
 
     # Add model settings
     obj_id = mesh.GetResourceID()
+    xml_name = xml_escape_attr(f"{name}.stl")
+    xml_plate_name = xml_escape_attr(plate_name)
+    xml_print_sequence = xml_escape_attr(print_sequence)
     model_settings = f'''<?xml version="1.0" encoding="UTF-8"?>
 <config>
   <object id="{obj_id}">
-    <metadata key="name" value="{name}.stl"/>
+    <metadata key="name" value="{xml_name}"/>
     <metadata key="extruder" value="1"/>
     <part id="1" subtype="normal_part">
-      <metadata key="name" value="{name}.stl"/>
+      <metadata key="name" value="{xml_name}"/>
       <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
     </part>
   </object>
   <plate>
     <metadata key="plater_id" value="1"/>
-    <metadata key="plater_name" value=""/>
+    <metadata key="plater_name" value="{xml_plate_name}"/>
     <metadata key="locked" value="false"/>
-    <metadata key="print_sequence" value="{print_sequence}"/>
+    <metadata key="print_sequence" value="{xml_print_sequence}"/>
     <model_instance>
       <metadata key="object_id" value="{obj_id}"/>
       <metadata key="instance_id" value="0"/>
@@ -421,6 +433,10 @@ def main():
         "--by-object",
         action="store_true",
         help="Set print sequence to 'by object' (sequential printing, one object at a time)",
+    )
+    parser.add_argument(
+        "--plate-name",
+        help="Custom plate name shown in BambuStudio (default: STL basename)",
     )
 
     args = parser.parse_args()
@@ -527,7 +543,15 @@ def main():
     print_sequence = "by object" if args.by_object else "by layer"
     if args.by_object:
         print(f"  Print sequence: by object (sequential)")
-    create_3mf(args.stl, args.output, settings, print_sequence=print_sequence)
+    if args.plate_name:
+        print(f"  Plate name: {args.plate_name}")
+    create_3mf(
+        args.stl,
+        args.output,
+        settings,
+        print_sequence=print_sequence,
+        plate_name=args.plate_name,
+    )
     print("✅ Done!")
 
 
