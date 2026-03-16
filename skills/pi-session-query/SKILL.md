@@ -9,6 +9,10 @@ Query pi session files to retrieve context from past conversations.
 
 This skill is useful in handed-off sessions when you need to look up details from the parent session.
 
+## Workflow: Search First, Then Query
+
+**Always search before querying.** Don't guess session files by timestamp — use `session-search` to find the right one, then `session-query` to extract details.
+
 ## Session Location
 
 Sessions are stored in `~/.pi/agent/sessions/` organized by project path:
@@ -20,30 +24,38 @@ Sessions are stored in `~/.pi/agent/sessions/` organized by project path:
     └── 2026-02-01T09-12-00-000Z_<uuid>.jsonl
 ```
 
-To find recent sessions for a project:
-```bash
-ls -lt ~/.pi/agent/sessions/--Users-tom-Development-project--/ | head -10
-```
+## Tools
 
-## Usage
+### session-search — Find sessions by keyword (fast)
 
-Run the `session-query` tool:
+Search across all sessions using ripgrep. Returns matching sessions sorted by most recent, with project, date, first user message, and full path.
 
 ```bash
-SKILL_DIR="$(dirname "$0")"
-"$SKILL_DIR/tools/session-query" <session-path> <question>
+~/.pi/agent/skills/pi-session-query/tools/session-search <query> [--project <fragment>] [--limit <n>]
 ```
 
-Or if globally linked:
+Examples:
+
+```bash
+# Find sessions about CORS
+~/.pi/agent/skills/pi-session-query/tools/session-search cors
+
+# Scope to a specific project
+~/.pi/agent/skills/pi-session-query/tools/session-search 'deploy' --project labs-ai
+
+# Get more results
+~/.pi/agent/skills/pi-session-query/tools/session-search 'authentication' --limit 20
+```
+
+### session-query — Query a specific session (LLM-powered)
+
+Once you have the session path from `session-search`, query it for details:
 
 ```bash
 ~/.pi/agent/skills/pi-session-query/tools/session-query <session-path> <question>
 ```
 
-- `session-path`: Full path to the session file (e.g., from "Parent session:" line)
-- `question`: What you want to know about that session
-
-## Examples
+Examples:
 
 ```bash
 # Find what files were modified
@@ -55,8 +67,6 @@ Or if globally linked:
 # Get a summary
 ~/.pi/agent/skills/pi-session-query/tools/session-query /path/to/session.jsonl "Summarize the key decisions made"
 ```
-
-The tool extracts the conversation from the session and uses an LLM to answer your question. Ask specific questions for best results.
 
 ## Source
 

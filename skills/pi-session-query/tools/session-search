@@ -1,0 +1,104 @@
+#!/bin/bash
+# Search pi sessions by keyword using ripgrep
+# Usage: session-search <query> [--project <path>] [--limit <n>]
+#
+# Finds sessions containing the query term and shows:
+# - Date, project, first user message (for context)
+# - Full session file path (for use with session-query)
+#
+# Results are sorted by most recent first.
+
+set -e
+
+if [[ $# -lt 1 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    echo "Usage: session-search <query> [--project <path-fragment>] [--limit <n>]"
+    echo ""
+    echo "Search pi sessions by keyword (uses ripgrep)."
+    echo ""
+    echo "Arguments:"
+    echo "  query                Search term (case-insensitive)"
+    echo ""
+    echo "Options:"
+    echo "  --project <fragment> Filter to projects matching this path fragment"
+    echo "                       e.g. 'labs-ai' or 'agent-skills'"
+    echo "  --limit <n>          Max results (default: 10)"
+    echo ""
+    echo "Examples:"
+    echo "  session-search cors"
+    echo "  session-search 'authentication' --project labs-ai"
+    echo "  session-search 'deploy' --limit 20"
+    echo ""
+    echo "Output includes the full path so you can pipe to session-query:"
+    echo "  session-query <path> 'What was decided about cors?'"
+    exit 1
+fi
+
+QUERY="$1"
+shift
+
+LIMIT=10
+PROJECT_FILTER=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --project)
+            PROJECT_FILTER="$2"
+            shift 2
+            ;;
+        --limit)
+            LIMIT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+SESSIONS_DIR="$HOME/.pi/agent/sessions"
+
+if [[ ! -d "$SESSIONS_DIR" ]]; then
+    echo "Error: Sessions directory not found: $SESSIONS_DIR" >&2
+    exit 1
+fi
+
+# Check for ripgrep
+if ! command -v rg &>/dev/null; then
+    echo "Error: ripgrep (rg) is required but not installed" >&2
+    exit 1
+fi
+
+# Build search path
+SEARCH_PATH="$SESSIONS_DIR"
+if [[ -n "$PROJECT_FILTER" ]]; then
+    # Find matching project directories
+    MATCHING_DIRS=$(find "$SESSIONS_DIR" -maxdepth 1 -type d -name "*${PROJECT_FILTER}*" 2>/dev/null)
+    if [[ -z "$MATCHING_DIRS" ]]; then
+        echo "No projects matching '$PROJECT_FILTER'" >&2
+        exit 1
+    fi
+    SEARCH_PATH="$MATCHING_DIRS"
+fi
+
+# Search with ripgrep, collect matching files
+MATCHING_FILES=$(rg -l -i "$QUERY" $SEARCH_PATH --glob "*.jsonl" 2>/dev/null)
+
+if [[ -z "$MATCHING_FILES" ]]; then
+    echo "No sessions found matching '$QUERY'"
+    exit 0
+fi
+
+# For each match: extract project, date, first user message, sort by mtime
+echo "$MATCHING_FILES" | while read -r f; do
+    mtime=$(stat -f "%m" "$f" 2>/dev/null || stat -c "%Y" "$f" 2>/dev/null)
+    project=$(basename "$(dirname "$f")" | sed 's/--/\//g; s/^\///')
+    date=$(basename "$f" | cut -c1-10)
+    first_msg=$(jq -r 'select(.type == "message") | .message | select(.role == "user") | [.content[] | select(.type == "text") | .text] | join(" ")' "$f" 2>/dev/null | head -1 | cut -c1-100)
+    echo "${mtime}|${date}|${project}|${first_msg}|${f}"
+done | sort -t'|' -k1 -rn | head -"$LIMIT" | while IFS='|' read -r _mtime date project first_msg path; do
+    echo "📅 $date | 📁 $project"
+    echo "   $first_msg"
+    echo "   $path"
+    echo ""
+done
