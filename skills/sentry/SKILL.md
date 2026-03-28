@@ -133,6 +133,18 @@ sentry issues mute --status unresolved
 sentry issues unresolve --id 123456
 ```
 
+## Show Issue Details
+
+```bash
+# Show details for a single issue
+sentry issues show --id 7055684245
+
+# Show details for multiple issues
+sentry issues show --id 123456 --id 789012
+```
+
+Output includes: short ID, title, culprit, level, status, event count, user count, first/last seen, and permalink.
+
 ## Search Query Syntax
 
 The `--query` flag supports Sentry's search syntax:
@@ -155,7 +167,7 @@ Full syntax: https://docs.sentry.io/concepts/search/
 
 ## Sentry API
 
-The CLI doesn't support fetching detailed issue information. Use the REST API instead.
+For anything beyond what the wrapper commands provide, use the REST API directly.
 
 Get the auth token (walks up directory tree like the wrapper):
 ```bash
@@ -168,26 +180,6 @@ find_sentryclirc() {
   echo ~/.sentryclirc
 }
 SENTRY_AUTH_TOKEN=$(grep -A1 '^\[auth\]' "$(find_sentryclirc)" | grep token | cut -d'=' -f2 | tr -d ' ')
-```
-
-### Get Issue Details
-
-```bash
-# Get full issue details by numeric ID (not short ID like PROJECT-1Q)
-curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  "https://sentry.io/api/0/issues/<ISSUE_ID>/" | jq
-
-# Get specific fields
-curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  "https://sentry.io/api/0/issues/<ISSUE_ID>/" | jq -r '{
-    shortId,
-    title,
-    culprit,
-    count,
-    firstSeen,
-    lastSeen,
-    query: .metadata.value
-  }'
 ```
 
 ### API Reference

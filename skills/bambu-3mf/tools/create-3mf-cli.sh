@@ -334,6 +334,11 @@ if [ $EXIT_CODE -ne 0 ]; then
     exit $EXIT_CODE
 fi
 
+# --- Sanitize XML (BambuStudio CLI doesn't escape &, <, >, " in XML attributes) ---
+for f in "$ABS_OUTPUT" ${SLICE:+"$GCODE_OUTPUT"}; do
+    [ -f "$f" ] && python3 "$SCRIPT_DIR/sanitize-3mf-xml.py" "$f"
+done
+
 # --- Post-process: plate names + print sequence ---
 PATCH_ARGS=(--auto-plate-names)
 [ "$BY_OBJECT" = "1" ] && PATCH_ARGS+=(--print-sequence "by object")

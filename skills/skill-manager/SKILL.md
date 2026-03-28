@@ -1,14 +1,14 @@
 ---
 name: skill-manager
-description: Manage and list agent skills - both global (~/.pi/agent/skills/) and project-level (.pi/skills/). List all skills, search ClawdHub, install skills, link/unlink skills. Do NOT automatically symlink or activate skills - always let the user decide.
+description: Manage and list agent skills, prompts, and extensions - globally (~/.pi/agent/*) or per-project (.pi/*). List, install, link/unlink, and bootstrap setup. Do NOT automatically symlink or activate anything - always let the user decide.
 ---
 
 # Skill Manager
 
-Manage agent skills for global use or project-specific use. Use when the user wants to:
+Manage agent skills, prompts, and extensions for global or project-specific use. Use when the user wants to:
 - Install or find skills (check local repo first, then ClawdHub)
-- Link/unlink skills globally or to a project
-- List available/installed skills
+- Link/unlink skills, prompts, or extensions globally or to a project
+- List available/installed skills, prompts, and extensions
 - Set up project-level `.pi/` configuration
 
 ## Finding the Skills Repo
@@ -20,6 +20,17 @@ SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
 AGENT_SKILLS_REPO=$(dirname $(dirname "$SKILL_PATH"))
 echo "$AGENT_SKILLS_REPO"
 ```
+
+## Read Repository Configuration First
+
+Before installing/linking anything, resolve the repo path and read these files with the **read tool** if present:
+
+- `$REPO/README.md`
+- `$REPO/config.yml`
+
+This clarifies what is a skill vs prompt vs extension and which global items are expected.
+
+Use this to disambiguate whether the user wants a **skill**, **prompt**, or **extension**.
 
 ## List All Skills
 
@@ -42,6 +53,50 @@ Format as a table for the user:
 - ✓ (g) = globally linked (~/.pi/agent/skills/)
 - ✓ (l) = project-linked (.pi/skills/)
 - ✓ (l)(g) = both
+
+## List Prompts
+
+List prompts available from the repo:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+find "$REPO/prompts" -maxdepth 1 -name "*.md" -type f
+```
+
+Check active global/project prompt links:
+
+```bash
+ls -la ~/.pi/agent/prompts
+ls -la .pi/prompts
+```
+
+## List Extensions
+
+List extensions available from the repo:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+find "$REPO/extensions" -mindepth 1 -maxdepth 1 -type d
+```
+
+Check active global/project extension links:
+
+```bash
+ls -la ~/.pi/agent/extensions
+ls -la .pi/extensions
+```
+
+## Disambiguate Request Type (Skill vs Prompt vs Extension)
+
+Before searching/installing:
+
+1. If user asks for a **prompt** (e.g. "link pr-review"), use `$REPO/prompts/*.md` and prompt link paths.
+2. If user asks for a **skill**, use skill workflow below (local/github/ClawdHub).
+3. If user asks for an **extension**, use `$REPO/extensions/*` and extension link paths.
+
+Do not run ClawdHub skill search for prompt-only requests.
 
 ## Installing a Skill — Search Order
 
@@ -206,6 +261,56 @@ ln -sf "$REPO/skills/<skill-name>" .pi/skills/
 ln -sf "$REPO/clawdhub/skills/<skill-name>" .pi/skills/
 ```
 
+## Linking Prompts Globally
+
+Link a prompt to make it available in all projects:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+mkdir -p ~/.pi/agent/prompts
+ln -sf "$REPO/prompts/<prompt-name>.md" ~/.pi/agent/prompts/
+```
+
+## Unlinking Global Prompts
+
+```bash
+rm ~/.pi/agent/prompts/<prompt-name>.md
+```
+
+## Linking Prompts to a Project
+
+Create symlinks in the project's `.pi/prompts/` directory:
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+mkdir -p .pi/prompts
+ln -sf "$REPO/prompts/<prompt-name>.md" .pi/prompts/
+```
+
+## Linking Extensions Globally
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+mkdir -p ~/.pi/agent/extensions
+ln -sf "$REPO/extensions/<extension-name>" ~/.pi/agent/extensions/
+```
+
+## Linking Extensions to a Project
+
+```bash
+SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
+REPO=$(dirname $(dirname "$SKILL_PATH"))
+
+mkdir -p .pi/extensions
+ln -sf "$REPO/extensions/<extension-name>" .pi/extensions/
+```
+
 ## Suggesting Skills for a Project
 
 When setting up skills for a project, analyze it and suggest relevant skills:
@@ -246,10 +351,10 @@ When setting up skills for a project, analyze it and suggest relevant skills:
 1. Run `ls -la` and check for `.git/`, `package.json`, `Gemfile`, config files
 2. If `package.json` exists, check dependencies
 3. If `Gemfile` exists, check gems: `grep -E "gem ['\"]sentry|tailwind" Gemfile`
-4. Suggest relevant skills based on findings
-5. If no matching installed skill, search ClawdHub: `clawdhub search "<need>"`
+4. Suggest relevant skills/prompts/extensions based on findings and repo README/config
+5. If no matching installed skill exists, search ClawdHub: `clawdhub search "<need>"` (skills only)
 6. Ask user to confirm before linking/installing
-7. Create symlinks for confirmed skills
+7. Create symlinks for confirmed items
 
 ### Examples
 
@@ -299,15 +404,19 @@ Brief description of the project.
 
 ## Directory Structure
 
-After setup, a project should have:
+After setup, a project can have:
 ```
 project/
 └── .pi/
-    ├── prompt.md              # Project instructions (always loaded)
-    └── skills/                # Project-specific skills
-        ├── github -> ...      # Symlinked from agent-skills repo
-        └── custom-skill/      # Or project-specific skills
-            └── SKILL.md
+    ├── prompt.md                 # Project instructions (always loaded)
+    ├── skills/                   # Project-specific skills
+    │   ├── github -> ...         # Symlinked from agent-skills repo
+    │   └── custom-skill/
+    │       └── SKILL.md
+    ├── prompts/                  # Optional project prompts
+    │   └── pr-review.md -> ...
+    └── extensions/               # Optional project extensions
+        └── infra-guard -> ...
 ```
 
 ## Creating Project-Specific Skills
@@ -324,3 +433,20 @@ Use when deploying this application.
 2. Build: `npm run build`
 3. Deploy: `./scripts/deploy-prod.sh`
 ```
+
+## Creating Project-Specific Prompts
+
+For prompt templates unique to a project, create them in `.pi/prompts/`:
+
+```markdown
+# .pi/prompts/release-checklist.md
+
+Use before cutting a release:
+1. Confirm tests pass
+2. Confirm changelog entry exists
+3. Confirm deployment notes are prepared
+```
+
+## Creating Project-Specific Extensions
+
+For project-only extensions, add them in `.pi/extensions/<name>/` and include any required extension files there.

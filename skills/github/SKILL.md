@@ -1,11 +1,11 @@
 ---
 name: github
-description: "Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries."
+description: "Interact with GitHub using the `gh` CLI. Prefer this skill for any `github.com` repo, file, issue, PR, release, or Actions link. Use `gh repo`, `gh api`, `gh issue`, `gh pr`, and `gh run` to inspect repositories, read files/README/docs, check releases, issues, PRs, and CI runs."
 ---
 
 # GitHub Skill
 
-Use the `gh` CLI to interact with GitHub. Always specify `--repo owner/repo` when not in a git directory, or use URLs directly.
+Prefer this skill for any `github.com` link when practical, not just issues and PRs. Use the `gh` CLI to inspect repositories, read README/docs/files, check releases, issues, PRs, Actions runs, and make advanced API queries. Always specify `--repo owner/repo` when not in a git directory, or use URLs directly.
 
 ## Pull Requests
 

@@ -133,6 +133,53 @@ if [[ "$SUBCOMMAND" == "projects" ]]; then
     exit 0
 fi
 
+# Show detailed issue info via REST API (sentry-cli doesn't support this)
+if [[ "$SUBCOMMAND" == "issues" ]] && [[ "${2:-}" == "show" ]]; then
+    if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
+        echo "Error: No auth token found. Set token in .sentryclirc [auth] section." >&2
+        exit 1
+    fi
+
+    shift 2  # Remove "issues show"
+    IDS=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --id) IDS+=("$2"); shift 2 ;;
+            *) echo "Usage: sentry issues show --id <ID> [--id <ID> ...]" >&2; exit 1 ;;
+        esac
+    done
+
+    if [[ ${#IDS[@]} -eq 0 ]]; then
+        echo "Error: At least one --id is required." >&2
+        echo "Usage: sentry issues show --id <ID> [--id <ID> ...]" >&2
+        exit 1
+    fi
+
+    for ID in "${IDS[@]}"; do
+        RESPONSE=$(curl -sf -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+            "https://sentry.io/api/0/issues/${ID}/" 2>&1) || {
+            echo "Error: Failed to fetch issue $ID." >&2
+            echo "Response: $RESPONSE" >&2
+            continue
+        }
+
+        echo "$RESPONSE" | jq -r '
+            "Issue:      \(.shortId)",
+            "Title:      \(.title)",
+            "Culprit:    \(.culprit)",
+            "Level:      \(.level)",
+            "Status:     \(.status)",
+            "Events:     \(.count)",
+            "Users:      \(.userCount)",
+            "First seen: \(.firstSeen)",
+            "Last seen:  \(.lastSeen)",
+            "Link:       \(.permalink)",
+            ""
+        '
+    done
+    exit 0
+fi
+
 # Commands that accept --org and --project flags (as subcommand flags)
 COMMANDS_WITH_ORG_PROJECT="issues|releases|deploys|repos|monitors|events|sourcemaps|debug-files|upload-proguard"
 

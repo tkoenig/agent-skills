@@ -65,9 +65,8 @@ Additionally, always check these general quality issues:
 
 ## 8. Provide structured review
 
-Output format:
+Output as rendered markdown (never wrap the review in a code fence):
 
-```
 PR: <url>
 Title: <title>
 Author: <author>
@@ -90,8 +89,6 @@ Author: <author>
 ## Tests
 - Status of test coverage
 - Suggested additional tests if needed
-```
-
 If no issues are found, say so under Bad and Ugly.
 
 ## Important notes

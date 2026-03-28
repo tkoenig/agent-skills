@@ -10,6 +10,7 @@ Supports:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 import zipfile
@@ -110,6 +111,95 @@ def derive_plate_names(root: ET.Element, output_path: str) -> list[str]:
     return derived_names
 
 
+def _regex_set_plate_metadata(plate_text: str, key: str, value: str) -> str:
+    """Set a metadata value inside a <plate>...</plate> block using regex.
+
+    Works on raw text without XML parsing — used as a fallback when BambuStudio
+    CLI produces invalid XML (e.g. unescaped quotes in G-code macro values).
+    """
+    pattern = re.compile(
+        r'(<metadata\s+key="' + re.escape(key) + r'"\s+value=")([^"]*?)("\s*/>)',
+    )
+    if pattern.search(plate_text):
+        return pattern.sub(r"\g<1>" + value.replace("\\", "\\\\") + r"\3", plate_text)
+    # Key not found — insert before closing </plate>
+    indent = "    "
+    new_meta = f'{indent}<metadata key="{key}" value="{value}"/>\n'
+    return plate_text.replace("</plate>", new_meta + "  </plate>")
+
+
+def _regex_get_plate_object_names(text: str, output_path: str) -> list[str]:
+    """Derive plate names from object metadata using regex (fallback)."""
+    # Collect object names by id
+    object_names: dict[str, str] = {}
+    for m in re.finditer(
+        r'<object\s+id="(\d+)"[^>]*>.*?</object>', text, re.DOTALL,
+    ):
+        obj_id = m.group(1)
+        name_match = re.search(
+            r'<metadata\s+key="(?:name|source_file)"\s+value="([^"]*)"', m.group(0),
+        )
+        if name_match:
+            object_names[obj_id] = normalize_plate_name(name_match.group(1))
+        else:
+            object_names[obj_id] = f"Object {obj_id}"
+
+    # Find plates and their objects
+    plates = list(re.finditer(r"<plate>.*?</plate>", text, re.DOTALL))
+    default_name = normalize_plate_name(Path(output_path).name)
+    derived: list[str] = []
+
+    for index, pm in enumerate(plates, start=1):
+        obj_ids = re.findall(
+            r'<metadata\s+key="object_id"\s+value="(\d+)"', pm.group(0),
+        )
+        unique_names: list[str] = []
+        for oid in obj_ids:
+            name = object_names.get(oid, f"Object {oid}")
+            if name not in unique_names:
+                unique_names.append(name)
+
+        if len(unique_names) == 1:
+            derived.append(unique_names[0])
+        elif len(plates) == 1:
+            derived.append(default_name or f"Plate {index}")
+        else:
+            derived.append(f"Plate {index}")
+
+    return derived
+
+
+def _patch_with_regex(
+    text: str,
+    print_sequence: str | None,
+    plate_names: list[str] | None,
+    auto_plate_names: bool,
+    output_path: str,
+) -> str:
+    """Patch model_settings.config using regex when XML parsing fails."""
+    plates = list(re.finditer(r"<plate>.*?</plate>", text, re.DOTALL))
+
+    target_names = plate_names
+    if target_names is None and auto_plate_names:
+        target_names = _regex_get_plate_object_names(text, output_path)
+
+    if target_names is not None and len(target_names) != len(plates):
+        raise RuntimeError(
+            f"plate name count mismatch (got {len(target_names)}, expected {len(plates)})"
+        )
+
+    # Patch plates in reverse order so offsets remain valid
+    for i, pm in reversed(list(enumerate(plates))):
+        plate_text = pm.group(0)
+        if print_sequence:
+            plate_text = _regex_set_plate_metadata(plate_text, "print_sequence", print_sequence)
+        if target_names is not None:
+            plate_text = _regex_set_plate_metadata(plate_text, "plater_name", target_names[i])
+        text = text[: pm.start()] + plate_text + text[pm.end() :]
+
+    return text
+
+
 def patch_3mf(path: str, print_sequence: str | None, plate_names: list[str] | None, auto_plate_names: bool) -> None:
     tmppath = f"{path}.tmp"
 
@@ -121,28 +211,46 @@ def patch_3mf(path: str, print_sequence: str | None, plate_names: list[str] | No
             data = zin.read(item.filename)
 
             if item.filename == MODEL_SETTINGS_PATH:
-                root = ET.fromstring(data.decode("utf-8"))
-                plates = root.findall("plate")
+                xml_text = data.decode("utf-8")
+                use_regex = False
 
-                if print_sequence:
-                    for plate in plates:
-                        set_metadata_value(plate, "print_sequence", print_sequence)
+                try:
+                    root = ET.fromstring(xml_text)
+                except ET.ParseError:
+                    # BambuStudio CLI can produce invalid XML (unescaped quotes
+                    # in G-code macro values like change_filament_gcode).
+                    # Fall back to regex-based patching which only touches
+                    # <plate> sections and leaves everything else untouched.
+                    use_regex = True
 
-                target_names = plate_names
-                if target_names is None and auto_plate_names:
-                    target_names = derive_plate_names(root, path)
+                if use_regex:
+                    xml_text = _patch_with_regex(
+                        xml_text, print_sequence, plate_names, auto_plate_names, path,
+                    )
+                    data = xml_text.encode("utf-8")
+                else:
+                    plates = root.findall("plate")
 
-                if target_names is not None:
-                    if len(target_names) != len(plates):
-                        raise RuntimeError(
-                            f"{path}: plate name count mismatch (got {len(target_names)}, expected {len(plates)})"
-                        )
-                    for plate, name in zip(plates, target_names):
-                        set_metadata_value(plate, "plater_name", name)
+                    if print_sequence:
+                        for plate in plates:
+                            set_metadata_value(plate, "print_sequence", print_sequence)
 
-                tree = ET.ElementTree(root)
-                ET.indent(tree, space="  ")
-                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                    target_names = plate_names
+                    if target_names is None and auto_plate_names:
+                        target_names = derive_plate_names(root, path)
+
+                    if target_names is not None:
+                        if len(target_names) != len(plates):
+                            raise RuntimeError(
+                                f"{path}: plate name count mismatch (got {len(target_names)}, expected {len(plates)})"
+                            )
+                        for plate, name in zip(plates, target_names):
+                            set_metadata_value(plate, "plater_name", name)
+
+                    tree = ET.ElementTree(root)
+                    ET.indent(tree, space="  ")
+                    data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
                 item.file_size = len(data)
 
             zout.writestr(item, data)
