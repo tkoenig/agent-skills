@@ -35,12 +35,13 @@ Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto
 # Full pipeline: arrange + sequential print + slice in one step
 {baseDir}/tools/create-3mf-cli.sh a.stl b.stl plate.3mf --preset strong --arrange --by-object --slice
 
-# With specific filament and auto-orient
-{baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --preset strong --filament esun-petg-basic --orient
+# With specific filament, machine/nozzle profile, and auto-orient
+{baseDir}/tools/create-3mf-cli.sh model.stl model.3mf --preset strong --machine a1-0.6 --filament esun-petg-basic --orient
 
-# List presets or filaments
+# List presets, filaments, or machine/nozzle profiles
 {baseDir}/tools/create-3mf-cli.sh --list-presets
 {baseDir}/tools/create-3mf-cli.sh --list-filaments
+{baseDir}/tools/create-3mf-cli.sh --list-machines
 ```
 
 If `--plate-names` is omitted, the tool auto-fills plate names from the STL basenames whenever it can determine a sensible one-object-per-plate mapping.
@@ -77,11 +78,12 @@ Python-based 3MF creation using lib3mf. Works without BambuStudio CLI but only s
 {baseDir}/tools/create-3mf.sh model.stl model.3mf --preset strong \
     --setting sparse_infill_density=60% --orient
 
-# Use a specific filament profile
-{baseDir}/tools/create-3mf.sh model.stl model.3mf --filament bambu-pla-basic
+# Use a specific filament and machine/nozzle profile
+{baseDir}/tools/create-3mf.sh model.stl model.3mf --machine a1-0.6 --filament bambu-pla-basic
 
-# List available filaments
+# List available filaments or machine/nozzle profiles
 {baseDir}/tools/create-3mf.sh --list-filaments
+{baseDir}/tools/create-3mf.sh --list-machines
 ```
 
 ## Filament Profiles
@@ -91,6 +93,15 @@ Filament profiles are stored in `filaments.json` in the project root. The tool s
 - The `"default"` key sets which filament is used automatically
 - Use `--filament <name>` to override
 - Each profile contains BambuStudio filament settings (vendor, density, temperatures, etc.)
+
+## Machine/Nozzle Profiles
+
+Machine/nozzle profiles are stored in `machines.json` in the project root. The tool searches from the current directory upward to find it.
+
+- The `"default"` key sets which machine/nozzle profile is used automatically
+- Use `--machine <name>` to override
+- Profiles can set printer metadata like `printer_settings_id`, `nozzle_diameter`, compatibility lists, and nozzle-specific default line widths
+- This prevents BambuStudio from snapping custom projects back to stock nozzle presets when opening a generated 3MF
 
 ### Open in BambuStudio
 

@@ -9,6 +9,7 @@
 #   --preset <name>         Use a preset (default, solid, fast, fine, strong)
 #   --setting key=value     Override a print setting (repeatable)
 #   --filament <name>       Use a specific filament profile
+#   --machine <name>        Use a specific machine/nozzle profile
 #   --arrange               Auto-arrange objects on the plate
 #   --orient                Auto-orient objects for best printability
 #   --by-object             Set print sequence to "by object" (sequential)
@@ -16,6 +17,7 @@
 #   --slice                 Also slice to gcode.3mf in one step
 #   --list-presets          Show available presets
 #   --list-filaments        Show available filament profiles
+#   --list-machines         Show available machine/nozzle profiles
 #
 # Requires the BambuStudio CLI. Set BAMBU_CLI to override the path.
 #
@@ -48,6 +50,7 @@ OUTPUT=""
 PRESET="default"
 SETTINGS=()
 FILAMENT=""
+MACHINE=""
 ARRANGE=0
 ORIENT=0
 BY_OBJECT=0
@@ -55,6 +58,7 @@ SLICE=0
 PLATE_NAMES=""
 LIST_PRESETS=0
 LIST_FILAMENTS=0
+LIST_MACHINES=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -64,6 +68,8 @@ while [ $# -gt 0 ]; do
             SETTINGS+=("$2"); shift 2 ;;
         --filament)
             FILAMENT="$2"; shift 2 ;;
+        --machine)
+            MACHINE="$2"; shift 2 ;;
         --arrange)
             ARRANGE=1; shift ;;
         --orient)
@@ -78,6 +84,8 @@ while [ $# -gt 0 ]; do
             LIST_PRESETS=1; shift ;;
         --list-filaments)
             LIST_FILAMENTS=1; shift ;;
+        --list-machines)
+            LIST_MACHINES=1; shift ;;
         -h|--help)
             echo "Usage: create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]"
             echo ""
@@ -87,6 +95,7 @@ while [ $# -gt 0 ]; do
             echo "  --preset <name>      Preset: default, solid, fast, fine, strong"
             echo "  --setting key=value  Override setting (repeatable)"
             echo "  --filament <name>    Filament profile from filaments.json"
+            echo "  --machine <name>     Machine/nozzle profile from machines.json"
             echo "  --arrange            Auto-arrange objects on the plate"
             echo "  --orient             Auto-orient objects"
             echo "  --by-object          Sequential printing (one object at a time)"
@@ -94,6 +103,7 @@ while [ $# -gt 0 ]; do
             echo "  --slice              Also slice to .gcode.3mf"
             echo "  --list-presets       Show available presets"
             echo "  --list-filaments     Show available filament profiles"
+            echo "  --list-machines      Show available machine/nozzle profiles"
             exit 0
             ;;
         *.stl|*.STL)
@@ -122,6 +132,11 @@ if [ "$LIST_FILAMENTS" = "1" ]; then
     exit 0
 fi
 
+if [ "$LIST_MACHINES" = "1" ]; then
+    python3 "$SCRIPT_DIR/create-3mf.py" --list-machines
+    exit 0
+fi
+
 # --- Validate ---
 if [ ${#STL_FILES[@]} -eq 0 ] || [ -z "$OUTPUT" ]; then
     echo "Usage: create-3mf-cli.sh <input.stl> [input2.stl ...] <output.3mf> [options]"
@@ -139,6 +154,7 @@ if [ ! -x "$BAMBU_CLI" ]; then
     fi
     FALLBACK_ARGS=("${STL_FILES[0]}" "$OUTPUT" --preset "$PRESET")
     [ -n "$FILAMENT" ] && FALLBACK_ARGS+=(--filament "$FILAMENT")
+    [ -n "$MACHINE" ] && FALLBACK_ARGS+=(--machine "$MACHINE")
     [ "$BY_OBJECT" = "1" ] && FALLBACK_ARGS+=(--by-object)
     if [ -n "$PLATE_NAMES" ]; then
         if [[ "$PLATE_NAMES" == *";"* ]]; then
@@ -178,6 +194,19 @@ find_filaments_json() {
     done
 }
 
+find_machines_json() {
+    local d="$(pwd)"
+    while true; do
+        if [ -f "$d/machines.json" ]; then
+            echo "$d/machines.json"
+            return
+        fi
+        local parent="$(dirname "$d")"
+        [ "$parent" = "$d" ] && return
+        d="$parent"
+    done
+}
+
 # --- Build settings files ---
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
@@ -185,15 +214,17 @@ trap "rm -rf $TMPDIR" EXIT
 # Base settings from our template
 BASE_TEMPLATE="$SKILL_DIR/settings/base_template.json"
 
-python3 - "$BASE_TEMPLATE" "$TMPDIR" "$PRESET" "$FILAMENT" "$(find_filaments_json)" "${SETTINGS[@]}" << 'PYEOF'
-import json, sys, os
+python3 - "$BASE_TEMPLATE" "$TMPDIR" "$PRESET" "$FILAMENT" "$MACHINE" "$(find_filaments_json)" "$(find_machines_json)" "${SETTINGS[@]}" << 'PYEOF'
+import ast, json, sys, os, re
 
 base_template = sys.argv[1]
 tmpdir = sys.argv[2]
 preset_name = sys.argv[3]
 filament_name = sys.argv[4] if sys.argv[4] else None
-filaments_path = sys.argv[5] if sys.argv[5] else None
-overrides = sys.argv[6:]
+machine_name = sys.argv[5] if sys.argv[5] else None
+filaments_path = sys.argv[6] if sys.argv[6] else None
+machines_path = sys.argv[7] if sys.argv[7] else None
+overrides = sys.argv[8:]
 
 # Presets
 PRESETS = {
@@ -214,6 +245,90 @@ PRESETS = {
                 "sparse_infill_pattern": "cubic", "enable_support": "0", "brim_type": "auto_brim"},
 }
 
+def load_named_profile(path, collection_key, requested_name, config_label):
+    if not path or not os.path.exists(path):
+        if requested_name:
+            print(f"ERROR: No {config_label} found (searched from cwd upward)", file=sys.stderr)
+            sys.exit(1)
+        return None, None
+
+    with open(path) as f:
+        data = json.load(f)
+
+    profiles = data.get(collection_key, {})
+    selected_name = requested_name or data.get("default")
+    if not selected_name:
+        return None, None
+    if selected_name not in profiles:
+        available = ", ".join(profiles.keys())
+        print(f"ERROR: Unknown {config_label.rstrip('.json')} '{selected_name}'. Available: {available}", file=sys.stderr)
+        sys.exit(1)
+
+    profile = dict(profiles[selected_name])
+    display_name = profile.pop("name", selected_name)
+    return profile, display_name
+
+
+def coerce_string_list(value):
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, tuple):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(v) for v in parsed]
+            except (SyntaxError, ValueError):
+                pass
+        return [value]
+    return [str(value)]
+
+
+def normalize_machine_settings(settings):
+    printer_id = settings.get("printer_settings_id")
+    if printer_id:
+        settings["print_compatible_printers"] = [printer_id]
+        settings["compatible_printers"] = [printer_id]
+    if "upward_compatible_machine" not in settings:
+        settings["upward_compatible_machine"] = []
+    if "nozzle_diameter" not in settings and printer_id:
+        match = re.search(r"([0-9.]+) nozzle$", printer_id)
+        if match:
+            settings["nozzle_diameter"] = [match.group(1)]
+
+    for key in ["nozzle_diameter", "compatible_printers", "print_compatible_printers", "upward_compatible_machine"]:
+        if key in settings:
+            settings[key] = coerce_string_list(settings[key])
+
+    return settings
+
+
+def build_process_id(settings, preset_name):
+    printer_profile = settings.get("printer_settings_id", "Bambu Lab A1 0.4 nozzle")
+    printer_suffix = printer_profile.replace("Bambu Lab ", "BBL ")
+    layer = settings.get("layer_height", "0.2")
+    try:
+        layer_label = f"{float(layer):.2f}mm"
+    except (TypeError, ValueError):
+        layer_label = f"{layer}mm"
+
+    if str(settings.get("spiral_mode", "0")) == "1":
+        label = "Vase Widewall" if str(settings.get("outer_wall_line_width", "")) != str(settings.get("line_width", "")) else "Vase"
+    else:
+        label = {
+            "default": "Default",
+            "solid": "Solid",
+            "fast": "Fast",
+            "fine": "Fine",
+            "strong": "Strong",
+        }.get(preset_name, "Custom")
+
+    return f"{layer_label} {label} @{printer_suffix}"
+
+
 # Load base template
 with open(base_template) as f:
     settings = json.load(f)
@@ -222,11 +337,23 @@ with open(base_template) as f:
 if preset_name in PRESETS:
     settings.update(PRESETS[preset_name])
 
+# Apply machine/nozzle profile
+machine_profile, machine_display = load_named_profile(machines_path, "machines", machine_name, "machines.json")
+if machine_profile:
+    settings.update(machine_profile)
+
+# Apply filament profile
+filament_profile, filament_display = load_named_profile(filaments_path, "filaments", filament_name, "filaments.json")
+if filament_profile:
+    settings.update(filament_profile)
+
 # Apply overrides
+override_keys = set()
 for o in overrides:
     if "=" in o:
         k, v = o.split("=", 1)
         settings[k] = v
+        override_keys.add(k)
 
 # Validate 100% infill pattern
 if settings.get("sparse_infill_density") == "100%":
@@ -235,12 +362,17 @@ if settings.get("sparse_infill_density") == "100%":
         settings["sparse_infill_pattern"] = "zig-zag"
         print(f"  ⚠️  Changed infill pattern to zig-zag (required for 100%)", file=sys.stderr)
 
+if "print_settings_id" not in override_keys:
+    settings["print_settings_id"] = build_process_id(settings, preset_name)
+
+settings = normalize_machine_settings(settings)
+
 # Write process settings
 process = dict(settings)
 process["from"] = "system"
 process["type"] = "process"
-process["name"] = f"0.{int(float(settings.get('layer_height', '0.2')) * 100):02d}mm Strong @BBL A1"
-process["compatible_printers"] = ["Bambu Lab A1 0.4 nozzle"]
+process["name"] = settings.get("print_settings_id", build_process_id(settings, preset_name))
+process["compatible_printers"] = settings.get("print_compatible_printers", [settings.get("printer_settings_id", "Bambu Lab A1 0.4 nozzle")])
 with open(os.path.join(tmpdir, "process.json"), "w") as f:
     json.dump(process, f, indent=2)
 
@@ -257,20 +389,13 @@ with open(os.path.join(tmpdir, "machine.json"), "w") as f:
     json.dump(machine, f, indent=2)
 
 # Write filament settings
-filament_display = None
-if filaments_path and os.path.exists(filaments_path):
-    with open(filaments_path) as f:
-        fdata = json.load(f)
-    filaments = fdata.get("filaments", {})
-    fname = filament_name or fdata.get("default")
-    if fname and fname in filaments:
-        profile = dict(filaments[fname])
-        filament_display = profile.pop("name", fname)
-        profile["from"] = "system"
-        profile["type"] = "filament"
-        profile["name"] = filament_display
-        with open(os.path.join(tmpdir, "filament.json"), "w") as f:
-            json.dump(profile, f, indent=2)
+if filament_profile:
+    filament_output = dict(filament_profile)
+    filament_output["from"] = "system"
+    filament_output["type"] = "filament"
+    filament_output["name"] = filament_display
+    with open(os.path.join(tmpdir, "filament.json"), "w") as f:
+        json.dump(filament_output, f, indent=2)
 
 # Print summary
 layer = settings.get("layer_height", "?")
@@ -279,6 +404,8 @@ pattern = settings.get("sparse_infill_pattern", "?")
 walls = settings.get("wall_loops", "?")
 support = "on" if settings.get("enable_support") == "1" else "off"
 print(f"  Preset: {preset_name}", file=sys.stderr)
+if machine_display:
+    print(f"  Machine: {machine_display}", file=sys.stderr)
 if filament_display:
     print(f"  Filament: {filament_display}", file=sys.stderr)
 print(f"  Layer height: {layer}mm", file=sys.stderr)

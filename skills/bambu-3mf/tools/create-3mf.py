@@ -29,8 +29,10 @@ Examples:
 """
 
 import argparse
+import ast
 import json
 import os
+import re
 import struct
 import sys
 from xml.sax.saxutils import escape
@@ -191,11 +193,11 @@ def load_base_settings():
         return json.load(f)
 
 
-def find_filaments_json():
-    """Find filaments.json by walking up from cwd to find project root."""
+def find_project_file(filename):
+    """Find a project config file by walking up from cwd."""
     d = os.getcwd()
     while True:
-        candidate = os.path.join(d, "filaments.json")
+        candidate = os.path.join(d, filename)
         if os.path.exists(candidate):
             return candidate
         parent = os.path.dirname(d)
@@ -203,6 +205,14 @@ def find_filaments_json():
             break
         d = parent
     return None
+
+
+def find_filaments_json():
+    return find_project_file("filaments.json")
+
+
+def find_machines_json():
+    return find_project_file("machines.json")
 
 
 def load_filament(filament_name=None):
@@ -230,9 +240,38 @@ def load_filament(filament_name=None):
         print(f"ERROR: Unknown filament '{name}'. Available: {available}", file=sys.stderr)
         sys.exit(1)
 
-    profile = filaments[name]
+    profile = dict(filaments[name])
     display_name = profile.pop("name", name)
     print(f"  Filament: {display_name}")
+    return profile
+
+
+def load_machine(machine_name=None):
+    """Load a machine/nozzle profile from machines.json. Returns dict or None."""
+    path = find_machines_json()
+    if not path:
+        if machine_name:
+            print("ERROR: No machines.json found (searched from cwd upward)", file=sys.stderr)
+            sys.exit(1)
+        return None
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    machines = data.get("machines", {})
+    default_name = data.get("default")
+    name = machine_name or default_name
+    if not name:
+        return None
+
+    if name not in machines:
+        available = ", ".join(machines.keys())
+        print(f"ERROR: Unknown machine '{name}'. Available: {available}", file=sys.stderr)
+        sys.exit(1)
+
+    profile = dict(machines[name])
+    display_name = profile.pop("name", name)
+    print(f"  Machine: {display_name}")
     return profile
 
 
@@ -262,6 +301,72 @@ def apply_overrides(settings, overrides):
     return settings
 
 
+def coerce_string_list(value):
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, tuple):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(v) for v in parsed]
+            except (SyntaxError, ValueError):
+                pass
+        return [value]
+    return [str(value)]
+
+
+def normalize_machine_settings(settings):
+    printer_id = settings.get("printer_settings_id")
+    if printer_id:
+        settings["print_compatible_printers"] = [printer_id]
+        settings["compatible_printers"] = [printer_id]
+    if "upward_compatible_machine" not in settings:
+        settings["upward_compatible_machine"] = []
+    if "nozzle_diameter" not in settings and printer_id:
+        match = re.search(r"([0-9.]+) nozzle$", printer_id)
+        if match:
+            settings["nozzle_diameter"] = [match.group(1)]
+
+    list_keys = [
+        "nozzle_diameter",
+        "compatible_printers",
+        "print_compatible_printers",
+        "upward_compatible_machine",
+    ]
+    for key in list_keys:
+        if key in settings:
+            settings[key] = coerce_string_list(settings[key])
+
+    return settings
+
+
+def build_process_id(settings, preset_name):
+    printer_profile = settings.get("printer_settings_id", "Bambu Lab A1 0.4 nozzle")
+    printer_suffix = printer_profile.replace("Bambu Lab ", "BBL ")
+    layer = settings.get("layer_height", "0.2")
+    try:
+        layer_label = f"{float(layer):.2f}mm"
+    except (TypeError, ValueError):
+        layer_label = f"{layer}mm"
+
+    if str(settings.get("spiral_mode", "0")) == "1":
+        label = "Vase Widewall" if str(settings.get("outer_wall_line_width", "")) != str(settings.get("line_width", "")) else "Vase"
+    else:
+        label = {
+            "default": "Default",
+            "solid": "Solid",
+            "fast": "Fast",
+            "fine": "Fine",
+            "strong": "Strong",
+        }.get(preset_name, "Custom")
+
+    return f"{layer_label} {label} @{printer_suffix}"
+
+
 def validate_settings(settings):
     """Check for common setting conflicts and fix them."""
     warnings = []
@@ -280,6 +385,7 @@ def validate_settings(settings):
                 f"Changed infill pattern from '{pattern}' to 'zig-zag' (required for 100% density)"
             )
 
+    settings = normalize_machine_settings(settings)
     return settings, warnings
 
 
@@ -425,9 +531,18 @@ def main():
         help="Filament profile name from filaments.json (default: uses 'default' key)",
     )
     parser.add_argument(
+        "--machine",
+        help="Machine/nozzle profile name from machines.json (default: uses 'default' key)",
+    )
+    parser.add_argument(
         "--list-filaments",
         action="store_true",
         help="List available filament profiles and exit",
+    )
+    parser.add_argument(
+        "--list-machines",
+        action="store_true",
+        help="List available machine/nozzle profiles and exit",
     )
     parser.add_argument(
         "--by-object",
@@ -468,6 +583,23 @@ def main():
             print(f"  {key:25s}  {name} ({vendor}){marker}")
         return
 
+    if args.list_machines:
+        path = find_machines_json()
+        if not path:
+            print("No machines.json found (searched from cwd upward)")
+            return
+        with open(path, "r") as f:
+            data = json.load(f)
+        default = data.get("default", "")
+        machines = data.get("machines", {})
+        print(f"Available machines (from {path}):")
+        for key, profile in machines.items():
+            name = profile.get("name", key)
+            printer = profile.get("printer_settings_id", "?")
+            marker = " (default)" if key == default else ""
+            print(f"  {key:25s}  {name} [{printer}]{marker}")
+        return
+
     if args.list_settings:
         print("Common print settings (use with --setting key=value):")
         print()
@@ -497,6 +629,9 @@ def main():
         print("    printer_model         e.g. 'Bambu Lab A1', 'Bambu Lab X1 Carbon'")
         print("    curr_bed_type         'Textured PEI Plate', 'Cool Plate', 'High Temp Plate'")
         print("    nozzle_diameter       ['0.4'] or ['0.2'], ['0.6'], ['0.8']")
+        print()
+        print("Machine/nozzle profiles:")
+        print("  Use --machine <name> to load printer/nozzle compatibility from machines.json")
         return
 
     if not args.stl or not args.output:
@@ -517,6 +652,12 @@ def main():
     # Apply preset
     settings = apply_preset(settings, args.preset)
 
+    # Apply machine/nozzle profile
+    machine_settings = load_machine(args.machine)
+    if machine_settings:
+        for k, v in machine_settings.items():
+            settings[k] = v
+
     # Apply filament profile
     filament_settings = load_filament(args.filament)
     if filament_settings:
@@ -524,9 +665,14 @@ def main():
             settings[k] = v
 
     # Apply manual overrides
+    override_keys = set()
     if args.setting:
+        override_keys = {s.split("=", 1)[0] for s in args.setting if "=" in s}
         settings = apply_overrides(settings, args.setting)
         print(f"  Overrides: {len(args.setting)}")
+
+    if "print_settings_id" not in override_keys:
+        settings["print_settings_id"] = build_process_id(settings, args.preset)
 
     # Validate and fix conflicts
     settings, warnings = validate_settings(settings)
