@@ -61,6 +61,9 @@ GitHub CLI integration (`gh` for issues, PRs, CI).
 Hetzner Cloud management via `hcloud` CLI.  
 **Install:** `brew install hcloud`
 
+### openscad
+Create, validate, preview, and export OpenSCAD 3D models for 3D printing.
+
 ### safari-cli
 Safari browser automation via AppleScript.  
 **Setup:** Safari > Develop > Allow JavaScript from Apple Events
