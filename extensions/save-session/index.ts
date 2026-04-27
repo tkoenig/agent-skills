@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 
 export default function (pi: ExtensionAPI) {
   const savedDir = join(process.cwd(), ".pi", "saved-sessions");
@@ -99,16 +99,23 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setWidget("save", undefined);
 
         if (generated) {
-          const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-          const accept = await ctx.ui.confirm("Save session", `Save as "${generated} (${date})"?`);
-          if (accept) {
+          const choice = await ctx.ui.select("Save session", [
+            `Save as: ${generated}`,
+            "Edit suggested name",
+            "Cancel",
+          ]);
+
+          if (choice === `Save as: ${generated}`) {
             name = generated;
-          } else {
-            name = await ctx.ui.input("Custom name:");
+          } else if (choice === "Edit suggested name") {
+            name = (await ctx.ui.editor("Edit session name:", generated))?.trim();
             if (!name) {
               ctx.ui.notify("Cancelled", "warning");
               return;
             }
+          } else {
+            ctx.ui.notify("Cancelled", "warning");
+            return;
           }
         } else {
           name = await ctx.ui.input("Session name:");
