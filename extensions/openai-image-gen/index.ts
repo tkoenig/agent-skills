@@ -1,9 +1,14 @@
 /**
  * OpenAI image generation for pi.
  *
- * Supports two backends:
+ * Supports three image backends:
+ * - opencode: OpenCode Zen subscription via OPENCODE_API_KEY / auth.json opencode entry
  * - subscription: ChatGPT Plus/Pro via pi's /login openai-codex flow
  * - api: OpenAI Platform API via OPENAI_API_KEY / auth.json openai entry
+ *
+ * With backend=auto, the extension follows the current selected model provider
+ * when it is opencode, openai-codex, or openai. Other providers prompt for a
+ * backend in interactive mode or fail with an explicit warning in non-UI mode.
  *
  * The subscription path uses ChatGPT's Codex responses backend with the
  * built-in image_generation tool. The API path uses /v1/images/generations.
@@ -35,9 +40,11 @@ import { type Static, Type } from "typebox";
 const TOOL_NAME = "openai_generate_image";
 const API_PROVIDER = "openai";
 const SUBSCRIPTION_PROVIDER = "openai-codex";
+const OPENCODE_PROVIDER = "opencode";
 
 const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 const DEFAULT_SUBSCRIPTION_CHAT_MODEL = "gpt-5.4";
+const DEFAULT_OPENCODE_MODEL = "gpt-5.5";
 const DEFAULT_BACKEND = "auto";
 const DEFAULT_SAVE_MODE = "none";
 const DEFAULT_OUTPUT_FORMAT = "png";
@@ -47,9 +54,10 @@ const DEFAULT_BACKGROUND = "auto";
 
 const OPENAI_IMAGES_ENDPOINT = "https://api.openai.com/v1/images/generations";
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
+const OPENCODE_RESPONSES_ENDPOINT = "https://opencode.ai/zen/v1/responses";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
 
-const BACKENDS = ["auto", "subscription", "api"] as const;
+const BACKENDS = ["auto", "opencode", "subscription", "api"] as const;
 type Backend = (typeof BACKENDS)[number];
 
 const SAVE_MODES = ["none", "project", "global", "custom"] as const;
@@ -72,7 +80,7 @@ const TOOL_PARAMS = Type.Object({
 	backend: Type.Optional(StringEnum(BACKENDS)),
 	model: Type.Optional(
 		Type.String({
-			description: `Image model id. Defaults to ${DEFAULT_IMAGE_MODEL}.`,
+			description: `Backend-specific model id. Defaults to ${DEFAULT_OPENCODE_MODEL} for opencode and ${DEFAULT_IMAGE_MODEL} for api.`,
 		}),
 	),
 	subscriptionChatModel: Type.Optional(
@@ -215,37 +223,83 @@ async function selectBackend(
 	params: ToolParams,
 	ctx: {
 		cwd: string;
+		hasUI?: boolean;
+		model?: { provider?: string; id?: string };
+		ui?: { select: (title: string, items: string[]) => Promise<string | undefined> };
 		modelRegistry: { getApiKeyForProvider: (provider: string) => Promise<string | undefined> };
 	},
 ): Promise<BackendSelection> {
 	const config = loadConfig(ctx.cwd);
 	const preferred = (params.backend || config.backend || DEFAULT_BACKEND) as Backend;
+	const opencodeCredential = await getCredentialForProvider(ctx, OPENCODE_PROVIDER);
 	const subscriptionCredential = await getCredentialForProvider(ctx, SUBSCRIPTION_PROVIDER);
 	const apiCredential = await getCredentialForProvider(ctx, API_PROVIDER);
 
-	if (preferred === "subscription") {
-		if (!subscriptionCredential) {
-			throw new Error("Missing ChatGPT subscription login. Run /login and select openai-codex.");
+	const requireBackend = (backend: Exclude<Backend, "auto">): BackendSelection => {
+		if (backend === "opencode") {
+			if (!opencodeCredential) {
+				throw new Error("Missing OpenCode credentials. Set OPENCODE_API_KEY or add an auth.json opencode entry.");
+			}
+			return { backend, credential: opencodeCredential };
 		}
-		return { backend: "subscription", credential: subscriptionCredential };
-	}
-
-	if (preferred === "api") {
+		if (backend === "subscription") {
+			if (!subscriptionCredential) {
+				throw new Error("Missing ChatGPT subscription login. Run /login and select openai-codex.");
+			}
+			return { backend, credential: subscriptionCredential };
+		}
 		if (!apiCredential) {
 			throw new Error("Missing OpenAI API key. Set OPENAI_API_KEY or add an auth.json openai entry.");
 		}
-		return { backend: "api", credential: apiCredential };
+		return { backend, credential: apiCredential };
+	};
+
+	if (preferred !== "auto") {
+		return requireBackend(preferred);
 	}
 
-	if (subscriptionCredential) {
-		return { backend: "subscription", credential: subscriptionCredential };
+	const currentProvider = ctx.model?.provider;
+	if (currentProvider === OPENCODE_PROVIDER) {
+		return requireBackend("opencode");
 	}
-	if (apiCredential) {
-		return { backend: "api", credential: apiCredential };
+	if (currentProvider === SUBSCRIPTION_PROVIDER) {
+		return requireBackend("subscription");
+	}
+	if (currentProvider === API_PROVIDER) {
+		return requireBackend("api");
 	}
 
+	const choices: Array<{ label: string; backend: Exclude<Backend, "auto">; credential: string }> = [];
+	if (opencodeCredential) choices.push({ label: "OpenCode", backend: "opencode", credential: opencodeCredential });
+	if (subscriptionCredential) choices.push({ label: "ChatGPT subscription", backend: "subscription", credential: subscriptionCredential });
+	if (apiCredential) choices.push({ label: "OpenAI API", backend: "api", credential: apiCredential });
+
+	if (choices.length === 0) {
+		throw new Error(
+			"No OpenAI image backend available. Configure OPENCODE_API_KEY, run /login for openai-codex, or configure OPENAI_API_KEY.",
+		);
+	}
+
+	const current = currentProvider ? `${currentProvider}/${ctx.model?.id || "unknown"}` : "unknown model";
+	if (ctx.hasUI && ctx.ui) {
+		const labels = choices.map((choice) => choice.label);
+		const cancel = "Cancel image generation";
+		const selected = await ctx.ui.select(
+			`Current model ${current} is not an image backend. Choose image backend:`,
+			[...labels, cancel],
+		);
+		if (!selected || selected === cancel) {
+			throw new Error("Image generation cancelled.");
+		}
+		const choice = choices.find((item) => item.label === selected);
+		if (choice) {
+			return { backend: choice.backend, credential: choice.credential };
+		}
+	}
+
+	const available = choices.map((choice) => choice.backend).join(", ");
 	throw new Error(
-		"No OpenAI image backend available. Either run /login for openai-codex or configure OPENAI_API_KEY.",
+		`Current model ${current} is not an image backend. Specify backend explicitly (${available}); GitHub Copilot does not support image_generation.`,
 	);
 }
 
@@ -474,6 +528,97 @@ async function generateViaSubscription(
 	};
 }
 
+async function generateViaOpencode(
+	params: ToolParams,
+	apiKey: string,
+	ctx: { cwd: string },
+	signal: AbortSignal | undefined,
+	onUpdate?: (update: { content: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }) => void,
+): Promise<ImageResult> {
+	const config = loadConfig(ctx.cwd);
+	const model = params.model || config.model || DEFAULT_OPENCODE_MODEL;
+	const size = params.size || DEFAULT_SIZE;
+	const quality = params.quality || DEFAULT_QUALITY;
+	const outputFormat = params.outputFormat || DEFAULT_OUTPUT_FORMAT;
+	const background = params.background || DEFAULT_BACKGROUND;
+
+	onUpdate?.({
+		content: [{ type: "text", text: `Requesting image from OpenCode via ${model}...` }],
+		details: { backend: "opencode", model, size, quality, outputFormat, background },
+	});
+
+	const response = await fetch(OPENCODE_RESPONSES_ENDPOINT, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			model,
+			store: false,
+			input: [
+				{
+					role: "user",
+					content: [{ type: "input_text", text: params.prompt }],
+				},
+			],
+			tools: [
+				{
+					type: "image_generation",
+					action: "generate",
+					size,
+					quality,
+					output_format: outputFormat,
+					background,
+				},
+			],
+			tool_choice: "auto",
+		}),
+		signal,
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text();
+		throw new Error(`OpenCode image request failed (${response.status}): ${errorText}`);
+	}
+
+	const json = (await response.json()) as {
+		status?: string;
+		output?: Array<{
+			type?: string;
+			result?: string;
+			content?: Array<{ type?: string; text?: string }>;
+		}>;
+	};
+	const outputs = Array.isArray(json.output) ? json.output : [];
+	const imageOutput = outputs.find(
+		(item) => item?.type === "image_generation_call" && typeof item?.result === "string" && item.result.length > 0,
+	);
+	if (!imageOutput?.result) {
+		throw new Error("OpenCode returned no image data.");
+	}
+
+	const notes = outputs
+		.flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+		.map((item) => (item.type === "output_text" && typeof item.text === "string" ? item.text.trim() : ""))
+		.filter(Boolean);
+
+	return {
+		imageBase64: imageOutput.result,
+		mimeType: mimeTypeForFormat(outputFormat),
+		notes: notes.length > 0 ? notes : undefined,
+		backendDetails: {
+			backend: "opencode",
+			imageModel: model,
+			size,
+			quality,
+			outputFormat,
+			background,
+			status: json.status,
+		},
+	};
+}
+
 async function generateViaApi(
 	params: ToolParams,
 	apiKey: string,
@@ -573,10 +718,12 @@ export default function openaiImageGen(pi: ExtensionAPI) {
 	pi.registerCommand("openai-image-status", {
 		description: "Show whether OpenAI image backends are available",
 		handler: async (_args, ctx) => {
+			const opencode = await getCredentialForProvider(ctx, OPENCODE_PROVIDER);
 			const subscription = await getCredentialForProvider(ctx, SUBSCRIPTION_PROVIDER);
 			const api = await getCredentialForProvider(ctx, API_PROVIDER);
+			const githubCopilot = await getCredentialForProvider(ctx, "github-copilot");
 			ctx.ui.notify(
-				`subscription:${subscription ? "available" : "missing"} • api:${api ? "available" : "missing"}`,
+				`opencode:${opencode ? "available" : "missing"} • subscription:${subscription ? "available" : "missing"} • api:${api ? "available" : "missing"} • github-copilot:${githubCopilot ? "available/no-image-generation" : "missing"}`,
 				"info",
 			);
 		},
@@ -586,8 +733,8 @@ export default function openaiImageGen(pi: ExtensionAPI) {
 		name: TOOL_NAME,
 		label: "OpenAI image",
 		description:
-			"Generate an image with OpenAI GPT Image models. Supports ChatGPT subscription login via openai-codex and the OpenAI API via OPENAI_API_KEY.",
-		promptSnippet: "Generate images with OpenAI GPT Image using either ChatGPT subscription or Platform API auth.",
+			"Generate an image with OpenAI GPT Image models. Supports OpenCode, ChatGPT subscription login via openai-codex, and the OpenAI API via OPENAI_API_KEY.",
+		promptSnippet: "Generate images with OpenAI GPT Image using OpenCode, ChatGPT subscription, or Platform API auth.",
 		promptGuidelines: [
 			"Use openai_generate_image when the user asks for an OpenAI-generated image or explicitly mentions ChatGPT Images / GPT Image.",
 		],
@@ -596,9 +743,11 @@ export default function openaiImageGen(pi: ExtensionAPI) {
 			const selected = await selectBackend(params, ctx);
 			const saveConfig = resolveSaveConfig(params, ctx.cwd);
 			const result =
-				selected.backend === "subscription"
-					? await generateViaSubscription(params, selected.credential, ctx, signal, onUpdate)
-					: await generateViaApi(params, selected.credential, ctx, signal, onUpdate);
+				selected.backend === "opencode"
+					? await generateViaOpencode(params, selected.credential, ctx, signal, onUpdate)
+					: selected.backend === "subscription"
+						? await generateViaSubscription(params, selected.credential, ctx, signal, onUpdate)
+						: await generateViaApi(params, selected.credential, ctx, signal, onUpdate);
 
 			let savedPath: string | undefined;
 			let saveError: string | undefined;
