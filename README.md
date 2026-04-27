@@ -61,6 +61,9 @@ GitHub CLI integration (`gh` for issues, PRs, CI).
 Hetzner Cloud management via `hcloud` CLI.  
 **Install:** `brew install hcloud`
 
+### heroku
+Manage Heroku apps, dynos, add-ons, config, and restarts via Heroku CLI/API.
+
 ### openscad
 Create, validate, preview, and export OpenSCAD 3D models for 3D printing.
 
