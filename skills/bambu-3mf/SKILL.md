@@ -10,7 +10,7 @@ Create BambuStudio-compatible 3MF project files from STL models with embedded pr
 ## Prerequisites
 
 - **lib3mf** Python package: `pip3 install lib3mf`
-- **BambuStudio** at `/Applications/BambuStudio.app` (for opening files)
+- **BambuStudio** at `/Applications/BambuStudio.app` (preferred for opening files and CLI use)
 - **Base settings template** at `settings/base_template.json` (included)
 
 ## Tools
@@ -46,7 +46,7 @@ Uses the BambuStudio CLI for native 3MF generation. Supports multiple STLs, auto
 
 If `--plate-names` is omitted, the tool auto-fills plate names from the STL basenames whenever it can determine a sensible one-object-per-plate mapping.
 
-Falls back to the Python-based tool for single STL if CLI is unavailable.
+Prefers the stock BambuStudio CLI at `/Applications/BambuStudio.app/Contents/MacOS/BambuStudio`, falls back to the older custom build if needed, and falls back to the Python-based tool for single STL if no CLI is available.
 
 ### Create 3MF (Python fallback)
 
@@ -111,7 +111,7 @@ Machine/nozzle profiles are stored in `machines.json` in the project root. The t
 
 ### Slice via CLI
 
-Slice a 3MF to a `.gcode.3mf` using the patched BambuStudio CLI:
+Slice a 3MF to a `.gcode.3mf` using the BambuStudio CLI:
 
 ```bash
 # Slice — output defaults to model.gcode.3mf
@@ -127,7 +127,7 @@ Slice a 3MF to a `.gcode.3mf` using the patched BambuStudio CLI:
 {baseDir}/tools/slice-3mf.sh model.3mf --arrange
 ```
 
-Uses a custom BambuStudio build with CLI fixes. Set `BAMBU_CLI` to override the binary path.
+Prefers the stock BambuStudio CLI at `/Applications/BambuStudio.app/Contents/MacOS/BambuStudio` and falls back to the older custom build if needed. Set `BAMBU_CLI` to override the binary path.
 
 ### List Presets & Settings
 
@@ -266,13 +266,15 @@ This skill uses the official `lib3mf` library for standards-compliant 3MF genera
 
 ## Custom BambuStudio CLI Build
 
-The CLI tools use a custom BambuStudio build with fixes for macOS CLI mode (stock BambuStudio segfaults — [#4627](https://github.com/bambulab/BambuStudio/issues/4627), [#9636](https://github.com/bambulab/BambuStudio/issues/9636)).
+The CLI tools now prefer the stock BambuStudio app installed at `/Applications/BambuStudio.app/Contents/MacOS/BambuStudio`.
 
-**Build location:** `~/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio`
+A custom build is still kept as a fallback for macOS CLI edge cases and for reproducing older upstream issues such as [#4627](https://github.com/bambulab/BambuStudio/issues/4627) and [#9636](https://github.com/bambulab/BambuStudio/issues/9636), which are still open.
+
+**Fallback build location:** `~/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio`
 
 **Source:** `~/Development/tkoenig/playground/bambustudio/` (cloned from `github.com/bambulab/BambuStudio`)
 
-Set `BAMBU_CLI` env var to override the binary path in any tool.
+Set `BAMBU_CLI` env var to force either binary in any tool.
 
 ## Related Skills
 

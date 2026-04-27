@@ -45,11 +45,26 @@ done
 python3 "$SCRIPT_DIR/create-3mf.py" "${PYTHON_ARGS[@]}"
 
 if [ "$ORIENT" = "1" ] && [ -n "$OUTPUT" ] && [ -f "$OUTPUT" ]; then
-    DEFAULT_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
-    BAMBU_CLI="${BAMBU_CLI:-$DEFAULT_BAMBU_CLI}"
+    OVERRIDE_BAMBU_CLI="${BAMBU_CLI:-}"
+    STOCK_BAMBU_CLI="/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"
+    CUSTOM_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
+
+    if [ -n "$OVERRIDE_BAMBU_CLI" ]; then
+        BAMBU_CLI="$OVERRIDE_BAMBU_CLI"
+    elif [ -x "$STOCK_BAMBU_CLI" ]; then
+        BAMBU_CLI="$STOCK_BAMBU_CLI"
+    elif [ -x "$CUSTOM_BAMBU_CLI" ]; then
+        BAMBU_CLI="$CUSTOM_BAMBU_CLI"
+    else
+        BAMBU_CLI="$STOCK_BAMBU_CLI"
+    fi
 
     if [ ! -x "$BAMBU_CLI" ]; then
         echo "⚠️  Cannot orient: BambuStudio CLI not found at $BAMBU_CLI"
+        if [ -z "$OVERRIDE_BAMBU_CLI" ]; then
+            echo "   Searched stock CLI:  $STOCK_BAMBU_CLI"
+            echo "   Searched custom CLI: $CUSTOM_BAMBU_CLI"
+        fi
         echo "   Set BAMBU_CLI to point to your BambuStudio binary."
         exit 0
     fi

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Slice a 3MF file using the patched BambuStudio CLI.
+# Slice a 3MF file using the BambuStudio CLI.
 # Produces a .gcode.3mf file ready for upload to the printer.
 #
 # Usage:
@@ -12,7 +12,9 @@
 # If no output path is given, replaces .3mf with .gcode.3mf in the same directory.
 #
 # Prerequisites:
-#   Custom BambuStudio CLI build (see SKILL.md for location).
+#   BambuStudio CLI. Prefers the stock app at
+#   /Applications/BambuStudio.app/Contents/MacOS/BambuStudio and falls back to
+#   the custom build used during earlier macOS CLI issues.
 #   Set BAMBU_CLI to override the binary path.
 #
 # Examples:
@@ -24,12 +26,26 @@
 set -e
 
 # --- Locate BambuStudio CLI binary ---
-DEFAULT_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
+OVERRIDE_BAMBU_CLI="${BAMBU_CLI:-}"
+STOCK_BAMBU_CLI="/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"
+CUSTOM_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
 
-BAMBU_CLI="${BAMBU_CLI:-$DEFAULT_BAMBU_CLI}"
+if [ -n "$OVERRIDE_BAMBU_CLI" ]; then
+    BAMBU_CLI="$OVERRIDE_BAMBU_CLI"
+elif [ -x "$STOCK_BAMBU_CLI" ]; then
+    BAMBU_CLI="$STOCK_BAMBU_CLI"
+elif [ -x "$CUSTOM_BAMBU_CLI" ]; then
+    BAMBU_CLI="$CUSTOM_BAMBU_CLI"
+else
+    BAMBU_CLI="$STOCK_BAMBU_CLI"
+fi
 
 if [ ! -x "$BAMBU_CLI" ]; then
     echo "ERROR: BambuStudio CLI not found at: $BAMBU_CLI"
+    if [ -z "$OVERRIDE_BAMBU_CLI" ]; then
+        echo "Searched stock CLI:  $STOCK_BAMBU_CLI"
+        echo "Searched custom CLI: $CUSTOM_BAMBU_CLI"
+    fi
     echo ""
     echo "Set BAMBU_CLI to point to your BambuStudio binary:"
     echo "  export BAMBU_CLI=/path/to/BambuStudio"

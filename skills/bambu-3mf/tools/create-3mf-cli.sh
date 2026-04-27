@@ -19,7 +19,10 @@
 #   --list-filaments        Show available filament profiles
 #   --list-machines         Show available machine/nozzle profiles
 #
-# Requires the BambuStudio CLI. Set BAMBU_CLI to override the path.
+# Requires the BambuStudio CLI. Prefers the stock app at
+# /Applications/BambuStudio.app/Contents/MacOS/BambuStudio and falls back to
+# the custom build used during earlier macOS CLI issues. Set BAMBU_CLI to
+# override the path.
 #
 # Examples:
 #   create-3mf-cli.sh model.stl model.3mf --preset strong
@@ -33,8 +36,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 
 # --- BambuStudio CLI ---
-DEFAULT_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
-BAMBU_CLI="${BAMBU_CLI:-$DEFAULT_BAMBU_CLI}"
+OVERRIDE_BAMBU_CLI="${BAMBU_CLI:-}"
+STOCK_BAMBU_CLI="/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"
+CUSTOM_BAMBU_CLI="$HOME/Development/tkoenig/playground/bambustudio/install_dir/bin/BambuStudio.app/Contents/MacOS/BambuStudio"
+
+if [ -n "$OVERRIDE_BAMBU_CLI" ]; then
+    BAMBU_CLI="$OVERRIDE_BAMBU_CLI"
+elif [ -x "$STOCK_BAMBU_CLI" ]; then
+    BAMBU_CLI="$STOCK_BAMBU_CLI"
+elif [ -x "$CUSTOM_BAMBU_CLI" ]; then
+    BAMBU_CLI="$CUSTOM_BAMBU_CLI"
+else
+    BAMBU_CLI="$STOCK_BAMBU_CLI"
+fi
 
 # --- Presets ---
 declare -A PRESET_SETTINGS
@@ -146,6 +160,10 @@ fi
 
 if [ ! -x "$BAMBU_CLI" ]; then
     echo "ERROR: BambuStudio CLI not found at: $BAMBU_CLI" >&2
+    if [ -z "$OVERRIDE_BAMBU_CLI" ]; then
+        echo "Searched stock CLI:  $STOCK_BAMBU_CLI" >&2
+        echo "Searched custom CLI: $CUSTOM_BAMBU_CLI" >&2
+    fi
     echo "Falling back to Python-based create-3mf.sh..." >&2
     # Fall back to Python tool (single STL only)
     if [ ${#STL_FILES[@]} -gt 1 ]; then
