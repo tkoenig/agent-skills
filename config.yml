@@ -3,8 +3,8 @@
 # Skills to link globally (~/.pi/agent/skills/)
 # Used for bootstrapping a new machine
 global_skills:
-  # ClawdHub skills
-  - tavily-search
+  # GitHub-hosted skills
+  - brave-search
 
   # Local skills
   - github
@@ -25,6 +25,13 @@ global_extensions:
 
 # GitHub-hosted skills
 github_skills:
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-stimulus-fundamentals
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-media-content
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-realtime-streaming
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-navigation-content
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-forms-validation
+  - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-ux-feedback
+  - https://github.com/badlogic/pi-skills/blob/main/brave-search/SKILL.md
   - https://github.com/modem-dev/hunk/tree/main/skills/hunk-review
   - https://github.com/vm0-ai/vm0-skills/blob/main/plausible/SKILL.md
   - https://github.com/badlogic/pi-skills/tree/main/browser-tools
