@@ -101,3 +101,6 @@ Show recent git commits by other team members since your last work session.
 
 ### infra-guard
 Blocks SSH, Ansible, Terraform, rsync, and scp commands to prevent accidental remote server access. These commands should be executed by the user, not the AI agent.
+
+### openai-image-gen
+Adds `openai_generate_image` for OpenAI GPT Image generation via ChatGPT subscription login or OpenAI API credentials.

@@ -21,6 +21,7 @@ global_prompts:
 # Extensions to link globally (~/.pi/agent/extensions/)
 global_extensions:
   - infra-guard
+  - openai-image-gen
 
 # GitHub-hosted skills
 github_skills:
