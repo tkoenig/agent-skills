@@ -49,6 +49,9 @@ ln -s ~/Development/tkoenig/agent-skills/extensions/infra-guard .pi/extensions/i
 
 ## Skills
 
+### css-cascade-debugging
+Debug CSS override issues involving Tailwind/DaisyUI cascade layers, specificity, `:where()`, generated CSS order, and computed browser styles.
+
 ### daisyui
 DaisyUI 5 components and Tailwind CSS 4 templates.  
 **Requires:** `daisyui-blueprint` MCP
