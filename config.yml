@@ -22,6 +22,7 @@ global_prompts:
 global_extensions:
   - infra-guard
   - openai-image-gen
+  - current-pr
 
 # GitHub-hosted skills
 github_skills:

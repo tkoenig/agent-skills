@@ -107,3 +107,6 @@ Blocks SSH, Ansible, Terraform, rsync, and scp commands to prevent accidental re
 
 ### openai-image-gen
 Adds `openai_generate_image` for OpenAI GPT Image generation via OpenCode, ChatGPT subscription login, or OpenAI API credentials.
+
+### current-pr
+Non-blocking GitHub PR status footer for pi. Async replacement for `npm:pi-pr-status`; shows PR checks/review threads top-right in the footer.
