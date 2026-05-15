@@ -65,4 +65,4 @@ $QUESTION
 
 Be concise and direct. Focus on specific facts, decisions, file paths, and code changes. If the information isn't in the session, say so."
 
-echo "$PROMPT" | pi -p -
+echo "$PROMPT" | pi -p
