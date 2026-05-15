@@ -110,3 +110,6 @@ Adds `openai_generate_image` for OpenAI GPT Image generation via OpenCode, ChatG
 
 ### current-pr
 Non-blocking GitHub PR status footer for pi. Async replacement for `npm:pi-pr-status`; shows PR checks/review threads top-right in the footer.
+
+### rubydex
+Adds Rubydex MCP tools via MCPorter for semantic Ruby declaration search, declaration details, descendants, constant references, and per-file declarations.
