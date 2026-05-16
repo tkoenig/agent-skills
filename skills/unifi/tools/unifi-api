@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""GET a UniFi Network API path with credentials loaded safely from config.
+
+Usage:
+  tools/unifi-api /proxy/network/api/s/default/stat/sta
+
+Reads UNIFI_CONFIG or ~/Library/Application Support/unifi/config.toml.
+Does not print the API key. GET-only by design.
+"""
+
+from __future__ import annotations
+
+import os
+import ssl
+import sys
+import tomllib
+import urllib.error
+import urllib.request
+
+
+def load_config(path: str) -> dict:
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        print(f"unifi-api: failed to read config: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+
+def profile_config(data: dict, profile: str | None) -> dict:
+    if not profile:
+        return data
+    for table_name in ("profiles", "profile"):
+        table = data.get(table_name)
+        if isinstance(table, dict) and isinstance(table.get(profile), dict):
+            merged = dict(data)
+            merged.update(table[profile])
+            return merged
+    return data
+
+
+def main() -> None:
+    if len(sys.argv) != 2 or sys.argv[1] in {"-h", "--help"}:
+        print("Usage: unifi-api <api-path-or-url>", file=sys.stderr)
+        sys.exit(2)
+
+    env = os.environ
+    config_path = env.get(
+        "UNIFI_CONFIG",
+        os.path.expanduser("~/Library/Application Support/unifi/config.toml"),
+    )
+    data = load_config(config_path)
+    cfg = profile_config(data, env.get("UNIFI_PROFILE") or data.get("profile"))
+
+    host = env.get("UNIFI_HOST") or cfg.get("host")
+    api_key = env.get("UNIFI_API_KEY") or cfg.get("api_key")
+    if not host or not api_key:
+        print("unifi-api: missing UNIFI_HOST/UNIFI_API_KEY or config host/api_key", file=sys.stderr)
+        sys.exit(2)
+
+    target = sys.argv[1]
+    if target.startswith("http://") or target.startswith("https://"):
+        url = target
+    else:
+        url = str(host).rstrip("/") + "/" + target.lstrip("/")
+
+    req = urllib.request.Request(url, headers={"X-API-KEY": str(api_key)})
+    ctx = ssl._create_unverified_context()
+
+    try:
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            sys.stdout.buffer.write(resp.read())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        print(f"unifi-api: HTTP {exc.code}: {body}", file=sys.stderr)
+        sys.exit(4 if exc.code == 404 else 5)
+    except Exception as exc:
+        print(f"unifi-api: request failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

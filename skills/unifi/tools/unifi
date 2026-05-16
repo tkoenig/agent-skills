@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Thin skill-local wrapper for uvx unifi-cli.
+# unifi-cli loads its own config (e.g. ~/Library/Application Support/unifi/config.toml)
+# and honors UNIFI_HOST / UNIFI_API_KEY / UNIFI_PROFILE itself.
+exec uvx unifi-cli "$@"

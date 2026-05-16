@@ -83,6 +83,9 @@ Manage project-level skills (local only by default).
 ### slack-assistant
 Slack channel monitoring and message posting.
 
+### unifi
+Manage and inspect UniFi Network controllers via `uvx unifi-cli`.
+
 ### vscode
 VS Code integration for viewing diffs.
 
