@@ -57,7 +57,9 @@ psst --global run /Users/tom/.pi/agent/skills/brave-search/search.js '"Johnson &
 This skill includes a helper script:
 
 ```bash
-/Users/tom/.pi/agent/skills/contact-lens-price-research/geizhals_offers.py URL [URL ...]
+./geizhals_offers.py URL [URL ...]
+# or from this project:
+.pi/skills/contact-lens-price-research/geizhals_offers.py URL [URL ...]
 ```
 
 It prints top Geizhals offers as TSV: URL, price, merchant, delivery time, delivery/payment notes, details.
@@ -65,7 +67,7 @@ It prints top Geizhals offers as TSV: URL, price, merchant, delivery time, deliv
 Example:
 
 ```bash
-/Users/tom/.pi/agent/skills/contact-lens-price-research/geizhals_offers.py \
+.pi/skills/contact-lens-price-research/geizhals_offers.py \
   https://geizhals.at/alcon-dailies-aquacomfort-plus-a1957641.html
 ```
 
