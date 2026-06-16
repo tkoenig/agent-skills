@@ -25,12 +25,6 @@ This skill includes a no-dependency Geizhals helper:
 .pi/skills/geizhals-price-comparison/geizhals.py offers URL [URL ...] --json
 ```
 
-The older offer-only wrapper still works:
-
-```bash
-.pi/skills/geizhals-price-comparison/geizhals_offers.py URL [URL ...]
-```
-
 ## Search Mode
 
 `search` uses Geizhals autocomplete (`/acs`) and enriches top candidates by fetching detail pages.
