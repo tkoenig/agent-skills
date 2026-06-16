@@ -1,11 +1,11 @@
 ---
 name: geizhals-price-comparison
-description: Research and compare prices on Geizhals.at for arbitrary products. Use when the user asks for cheapest offers, price comparisons, pack/variant comparisons, cart checks, shipping-aware totals, or whether a Geizhals/shop offer is good.
+description: Research and compare prices on Geizhals.at for arbitrary products. Use when the user asks for cheapest offers, price comparisons, product search, pack/variant comparisons, cart checks, shipping-aware totals, or whether a Geizhals/shop offer is good.
 ---
 
 # Geizhals Price Comparison
 
-Use this skill for general Geizhals price research, not only contact lenses.
+Use this skill for general Geizhals price research.
 
 ## Goals
 
@@ -14,44 +14,70 @@ Use this skill for general Geizhals price research, not only contact lenses.
 - Check whether a user's cart/order summary looks correct.
 - Explain the cheapest sensible option, not just the lowest sticker price.
 
-## Search
+## CLI
 
-When the Geizhals URL is unknown, search with Brave:
+This skill includes a no-dependency Geizhals helper:
+
+```bash
+.pi/skills/geizhals-price-comparison/geizhals.py search "query" --limit 5
+.pi/skills/geizhals-price-comparison/geizhals.py search "query" --limit 5 --json
+.pi/skills/geizhals-price-comparison/geizhals.py offers URL [URL ...]
+.pi/skills/geizhals-price-comparison/geizhals.py offers URL [URL ...] --json
+```
+
+The older offer-only wrapper still works:
+
+```bash
+.pi/skills/geizhals-price-comparison/geizhals_offers.py URL [URL ...]
+```
+
+## Search Mode
+
+`search` uses Geizhals autocomplete (`/acs`) and enriches top candidates by fetching detail pages.
+
+Output fields include:
+
+- `name`
+- `detail_url`
+- `min_price_eur`
+- `shop`
+- `offer_count`
+- `price_confidence`: `high|medium|low|unknown`
+- `price_source`: `offer_table|embedded_offer_raw_price|meta_product_price|title_ab_price|none`
+- `error`
+
+Example:
+
+```bash
+.pi/skills/geizhals-price-comparison/geizhals.py search "mac mini m4 512" --limit 5 --json
+```
+
+If Geizhals search is not enough, use Brave as fallback:
 
 ```bash
 psst --global run /Users/tom/.pi/agent/skills/brave-search/search.js "site:geizhals.at PRODUCT MODEL VARIANT" -n 20 --country AT
 ```
 
-For exact product names, quote the query:
-
-```bash
-psst --global run /Users/tom/.pi/agent/skills/brave-search/search.js '"PRODUCT NAME" "Geizhals Österreich"' -n 10 --country AT
-```
+## Offers Mode
 
 Prefer Geizhals product pages (`...-a123456.html`) over broad variant/category pages (`...-v12345.html`) when comparing offers.
 
-## Offer Extraction Helper
+`offers` extracts Geizhals offer rows from product pages and includes:
 
-This skill includes a no-dependency parser for Geizhals product pages:
-
-```bash
-/Users/tom/Development/tkoenig/agent-skills/skills/geizhals-price-comparison/geizhals_offers.py URL [URL ...]
-```
-
-Output is TSV:
-
-```text
-url price merchant delivery_time delivery_payment details
-```
+- item price
+- merchant
+- delivery time
+- shipping/payment notes
+- shop-specific product detail string
 
 Example:
 
 ```bash
-/Users/tom/Development/tkoenig/agent-skills/skills/geizhals-price-comparison/geizhals_offers.py \
+.pi/skills/geizhals-price-comparison/geizhals.py offers \
   https://geizhals.at/some-product-a123456.html
 ```
 
-Use the `details` column to verify the exact product variant.
+Use the details field to verify the exact product variant.
 
 ## Variant Verification
 
@@ -81,10 +107,10 @@ Do not overstate precision: Geizhals prices can change and final checkout may di
 
 ## Comparing Multiple URLs
 
-Run the helper on multiple product pages and compare:
+Run `offers` on multiple product pages:
 
 ```bash
-/Users/tom/Development/tkoenig/agent-skills/skills/geizhals-price-comparison/geizhals_offers.py URL1 URL2 URL3
+.pi/skills/geizhals-price-comparison/geizhals.py offers URL1 URL2 URL3 --json
 ```
 
 For multi-item carts, group offers by merchant where possible and compute:
