@@ -1,6 +1,6 @@
 ---
 name: cloudflare-api
-description: Connect to Cloudflare API for DNS management, R2 bucket management, tunnels, and zone administration. Use when user needs to manage domains, DNS records, R2 buckets, or create tunnels.
+description: Connect to Cloudflare API via Cloudflare MCP Code Mode or local scripts for DNS management, R2 bucket management, tunnels, and zone administration. Use when user needs to manage domains, DNS records, R2 buckets, Workers, D1, rulesets, or Cloudflare API operations.
 read_when:
   - User asks about Cloudflare DNS or domains
   - User wants to create or manage DNS records
@@ -11,7 +11,7 @@ metadata:
   clawdbot:
     emoji: "☁️"
     requires:
-      bins: ["curl", "jq"]
+      bins: ["curl", "jq", "npx"]
 ---
 
 # Cloudflare Skill
@@ -20,17 +20,73 @@ metadata:
 
 Connect to [Cloudflare](https://cloudflare.com) API for DNS management, tunnels, and zone administration.
 
-## Cloudflare API Reference
+## Tool Routing
 
-For full API documentation, fetch the LLM-optimized reference:
+Prefer Cloudflare MCP Code Mode for broad or unknown Cloudflare API work. Use the local scripts for known, deterministic DNS/R2/tunnel workflows that this skill already covers.
+
+| Task | Preferred path |
+| --- | --- |
+| Cloudflare product/API discovery | Native MCP `cloudflare_docs` then `cloudflare_search` (fallback: `./scripts/mcp.sh docs` / `search`) |
+| Unknown endpoint, Workers, D1, Rulesets, WAF, Pages, AI Gateway, etc. | Native MCP `cloudflare_search` → `cloudflare_execute` |
+| Exact DNS CRUD from this skill | Local DNS scripts |
+| Common R2 bucket workflows, especially jurisdiction-sensitive checks | Local R2 scripts |
+| Tunnel CRUD from this skill | Local tunnel scripts |
+| Analytics / GraphQL reporting | `cloudflare-analytics` skill first; MCP fallback |
+| MCP unavailable or unauthenticated | Local scripts + Cloudflare `llms.txt` fallback |
+
+For MCP `execute`, read-only API calls are okay. Ask the user before `POST`, `PUT`, `PATCH`, or `DELETE`, especially for DNS records, R2 buckets, tunnels, rulesets, WAF, Workers, and access/security settings.
+
+## Cloudflare MCP (preferred: pi-mcp-adapter)
+
+The server is configured globally in `~/.config/mcp/mcp.json` as `cloudflare` (`https://mcp.cloudflare.com/mcp`, OAuth handled by the adapter). Call tools through the `mcp` proxy tool; `args` is a JSON **string**:
+
+```
+mcp({ search: "cloudflare" })                       # discover tools/schemas
+mcp({ tool: "cloudflare_docs", args: "{\"query\":\"R2 bucket jurisdiction API\"}" })
+mcp({ tool: "cloudflare_search", args: "{\"code\":\"async () => Object.keys(spec.paths).filter(p => p.includes('/workers/scripts'))\"}" })
+mcp({ tool: "cloudflare_execute", args: "{\"code\":\"async () => { const r = await cloudflare.request({ method: 'GET', path: `/accounts/${accountId}/workers/scripts` }); return r.result; }\"}" })
+```
+
+If a call fails with "Re-authentication required", start OAuth and give the user the returned URL:
+
+```
+mcp({ action: "auth-start", server: "cloudflare" })
+```
+
+The browser redirects to a localhost URL that fails to load; the user copies the full URL and you complete with `mcp({ action: "auth-complete", server: "cloudflare", args: "{\"redirectUrl\":\"...\"}" })`.
+
+## Cloudflare MCP via mcporter (fallback)
+
+Use only when the native adapter is unavailable. The helper script wraps `npx --yes mcporter@latest` so the skill uses the latest MCPorter transport/OAuth support.
+
+```bash
+./scripts/mcp.sh install   # add https://mcp.cloudflare.com/mcp to MCPorter as cloudflare-api
+./scripts/mcp.sh auth      # OAuth login/refresh
+./scripts/mcp.sh status    # verify auth/connection without printing secrets
+./scripts/mcp.sh list      # list available MCP tools
+```
+
+Useful MCP calls:
+
+```bash
+./scripts/mcp.sh docs "R2 bucket jurisdiction API"
+./scripts/mcp.sh search 'async () => Object.keys(spec.paths).filter(p => p.includes("/workers/scripts"))'
+./scripts/mcp.sh execute 'async () => { const r = await cloudflare.request({ method: "GET", path: `/accounts/${accountId}/workers/scripts` }); return r.result; }'
+```
+
+Use `CLOUDFLARE_MCP_SERVER` when the MCPorter server name is not `cloudflare-api`.
+
+## Cloudflare API Reference Fallback
+
+For full API documentation when MCP is unavailable, fetch the LLM-optimized reference:
 
 ```bash
 curl -s https://developers.cloudflare.com/llms.txt
 ```
 
-Use this when you need to look up endpoints, parameters, or capabilities beyond what this skill covers.
+Use product-specific `llms.txt` files from that index when possible.
 
-## Setup
+## Direct API Script Setup
 
 ### 1. Get Your API Token
 1. Go to [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)

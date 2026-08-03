@@ -40,6 +40,23 @@ bash -c 'curl -s -H "Authorization: Bearer $CLOUDFLARE_STREAM_API_TOKEN" "https:
 
 > **Important:** When using `$VAR` in a command that pipes to another command, wrap the command containing `$VAR` in `bash -c '...'`. Environment variables are silently cleared when pipes are used directly.
 
+## Cloudflare `cf` CLI Notes
+
+The official Cloudflare `cf` CLI is useful for auth, zone lookup, and DNS analytics, but as of `cf` v0.0.5 it does **not** expose the GraphQL HTTP/Stream analytics queries used below.
+
+- In pi/non-login shells, `cf` may only be on the mise login-shell PATH. Use `zsh -lic 'cf ...'` if `bash` cannot find it.
+- Check auth with `zsh -lic 'cf auth whoami'`. Do not print or inspect stored token values.
+- Find the Labs zone with:
+  ```bash
+  zsh -lic 'cf zones list --name wearedevs.ai --fields id,name,status,account'
+  ```
+- DNS analytics works through the CLI, but the free plan only allows a 6-hour query window. The CLI currently resolves `CLOUDFLARE_ACCOUNT_ID` from the environment more reliably than `--account-id`:
+  ```bash
+  zsh -lic 'CLOUDFLARE_ACCOUNT_ID=... cf dns analytics report --zone wearedevs.ai --since 2026-05-27T00:00:00Z --until 2026-05-27T06:00:00Z --metrics queryCount --dimensions queryName,responseCode --limit 20 --sort=-queryCount'
+  ```
+- `cf agent-context analytics` and `cf schema --list` mention deprecated zone analytics commands, but those commands are not registered in the top-level CLI in v0.0.5. Keep using the GraphQL API for HTTP status/path analytics and Stream analytics.
+- If `cf auth whoami` shows OAuth auth with analytics scopes, GraphQL accepts that OAuth access token. If no suitable API token is exported, use a local script to load `access_token` from `~/.cf/config.toml` and send the GraphQL request in memory. Never `cat`, `read`, echo, log, or paste the token value.
+
 ## List Zones
 
 Find zone IDs (needed for HTTP analytics):
@@ -185,7 +202,7 @@ bash -c 'curl -s -X POST \
 
 ```json
 {
-  "query": "{ viewer { accounts(filter: {accountTag: \"$ACCOUNT_ID\"}) { streamMinutesViewedAdaptiveGroups(filter: {date_geq: \"$START_DATE\", date_lt: \"$END_DATE\"}, orderBy: [dimensions_date_ASC], limit: 100) { sum { minutesViewed } dimensions { date } count } } } }"
+  "query": "{ viewer { accounts(filter: {accountTag: \"$ACCOUNT_ID\"}) { streamMinutesViewedAdaptiveGroups(filter: {date_geq: \"$START_DATE\", date_lt: \"$END_DATE\"}, orderBy: [date_ASC], limit: 100) { sum { minutesViewed } dimensions { date } count } } } }"
 }
 ```
 
@@ -213,8 +230,8 @@ Dimensions can be combined in a single query.
 |-------|-------------|
 | `sum_minutesViewed_DESC` | Most watched first |
 | `sum_minutesViewed_ASC` | Least watched first |
-| `dimensions_date_ASC` | Oldest date first |
-| `dimensions_date_DESC` | Newest date first |
+| `date_ASC` | Oldest date first |
+| `date_DESC` | Newest date first |
 
 ### Stream Filters
 
@@ -278,6 +295,10 @@ The token needs **Zone → Analytics → Read** permission. Update at https://da
 ### "account does not have access" Error
 
 The token needs **Account → Account Analytics → Read** permission.
+
+### "does not have permission 'com.cloudflare.api.account.zone.analytics.read'"
+
+The token cannot query zone HTTP analytics for that zone. Use a token with **Zone → Analytics → Read** for the zone, or use an authenticated `cf` OAuth token with analytics scopes without printing the token value.
 
 ## API Reference
 
