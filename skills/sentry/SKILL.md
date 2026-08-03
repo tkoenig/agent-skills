@@ -1,297 +1,217 @@
 ---
 name: sentry
-description: "Manage Sentry issues using sentry-cli and the Sentry API. List, resolve, mute, and unresolve issues. Get detailed issue information. Use for error tracking, issue triage, and managing application errors in Sentry."
+description: "Manage Sentry issues using the modern Sentry CLI from https://cli.sentry.dev/. List and inspect issues, view events, use Seer AI explain/plan, browse projects, and make authenticated API requests. Use for error tracking, issue triage, and Sentry diagnostics."
 ---
 
 # Sentry CLI
 
-Manage Sentry issues via the `sentry` wrapper script and the REST API.
+Use the modern `sentry` CLI from <https://cli.sentry.dev/> for Sentry work.
 
-## Important: Script Location
+Prefer dedicated `sentry` commands over raw REST calls. Use `sentry api` only when no dedicated command exists.
 
-The `sentry` wrapper script is located in this skill's directory at `scripts/sentry`. 
-
-**First, locate this skill directory** by finding where this SKILL.md file is loaded from (check the path shown when reading this file), then use the script relative to that location.
-
-For example, if this skill is at `/path/to/skills/sentry/SKILL.md`, run:
-```bash
-/path/to/skills/sentry/scripts/sentry <command>
-```
-
-## Quick Reference
+## Install / verify
 
 ```bash
-<skill-dir>/scripts/sentry config                              # Show current config
-<skill-dir>/scripts/sentry projects                            # List available projects
-<skill-dir>/scripts/sentry issues list --query "is:unresolved" # List open issues
-<skill-dir>/scripts/sentry issues resolve --id <ID>            # Resolve an issue
-<skill-dir>/scripts/sentry issues mute --id <ID>               # Mute an issue
+# Preferred install on macOS
+brew install getsentry/tools/sentry
+
+# Verify without printing token details
+sentry --version
+sentry org list --json --fields slug,name
 ```
 
-Replace `<skill-dir>` with the actual path to this skill's directory.
-
-## Setup
-
-The wrapper script wraps `sentry-cli` and finds `.sentryclirc` in parent directories, enabling per-org/project tokens.
-
-### Directory-Based Config
-
-Place `.sentryclirc` files in parent directories for different orgs. Configs are **merged** from root to current directory, so you can set org-wide defaults and override per-project:
-
-```
-~/Development/
-├── org-a/
-│   ├── .sentryclirc          # org-a token + org name
-│   ├── project-1/
-│   │   └── .sentryclirc      # just: project=project-1
-│   └── project-2/
-│       └── .sentryclirc      # just: project=project-2
-└── org-b/
-    ├── .sentryclirc          # org-b token + org name
-    └── project-3/
-```
-
-Parent config (e.g., `~/Development/org-a/.sentryclirc`):
-```ini
-[auth]
-token=sntryu_xxx
-
-[defaults]
-org=my-org
-```
-
-Project-specific override (e.g., `project-1/.sentryclirc`):
-```ini
-[defaults]
-project=project-1
-```
-
-### Verify Setup
-
-In the examples below, `sentry` refers to `<skill-dir>/scripts/sentry`.
+If not authenticated, ask the user to run:
 
 ```bash
-# Show current configuration (wrapper command)
-sentry config
-
-# Verify token works with Sentry
-sentry info
-
-# List available projects in your org
-sentry projects
+sentry auth login
 ```
 
-## List Issues
+Do **not** read, print, grep, or copy auth tokens. Avoid `sentry auth status` in agent transcripts because it may display partial token details. The CLI manages credentials locally.
+
+## Agent rules
+
+- Just run the relevant `sentry` command first; the CLI auto-detects org/project from config, DSNs, `.env`, and source code.
+- Do not pre-fetch tokens or inspect secret files.
+- Prefer singular noun commands: `sentry issue ...`, `sentry project ...`, `sentry org ...`.
+- Use `--json` and `--fields` for machine-readable, low-noise output.
+- Use `--limit` to keep output small.
+- If auto-detection is wrong, retry with explicit `<org>/<project>`.
+- Ask before mutating state: resolving, unresolving, archiving, merging, deleting, starting trials, or changing project/org settings.
+
+## Quick reference
 
 ```bash
-# List all issues (default: up to 5 pages of 100 issues)
-sentry issues list
-
-# List only unresolved issues
-sentry issues list --query "is:unresolved"
-
-# List resolved issues
-sentry issues list --query "is:resolved"
-
-# Limit output rows
-sentry issues list --query "is:unresolved" --max-rows 10
-
-# Filter by status flag (alternative to query)
-sentry issues list --status unresolved
+sentry org list --json --fields slug,name            # Check auth and list orgs safely
+sentry project list <org> --json                     # List projects
+sentry issue list --query "is:unresolved" --limit 10 # List unresolved issues
+sentry issue view <ISSUE>                            # Inspect issue details
+sentry issue events <ISSUE> --limit 5                # List events for an issue
+sentry issue explain <ISSUE>                         # Seer AI root-cause analysis
+sentry issue plan <ISSUE>                            # Seer AI fix plan
+sentry issue resolve <ISSUE>                         # Resolve issue, after user confirmation
+sentry issue unresolve <ISSUE>                       # Reopen issue, after user confirmation
+sentry issue archive <ISSUE>                         # Archive/ignore, after user confirmation
+sentry schema <resource>                             # Explore supported API resources
+sentry api <endpoint>                                # Authenticated API request
 ```
 
-## Resolve Issues
+Issue identifiers can usually be full IDs, short IDs like `PROJECT-123`, suffixes, or aliases returned by `sentry issue list`.
+
+## Common workflows
+
+### Investigate recent issues
 
 ```bash
-# Resolve a specific issue by ID
-sentry issues resolve --id 7055684245
-
-# Resolve multiple issues
-sentry issues resolve --id 123456 --id 789012
-
-# Resolve all unresolved issues (use with caution)
-sentry issues resolve --status unresolved
-
-# Resolve in next release only
-sentry issues resolve --id 123456 --next-release
+sentry issue list --query "is:unresolved" --sort date --limit 10 --json \
+  --fields shortId,title,level,status,count,lastSeen,permalink
 ```
 
-## Mute Issues
+Then inspect the relevant issue:
 
 ```bash
-# Mute a specific issue
-sentry issues mute --id 123456
-
-# Mute all issues with a specific status
-sentry issues mute --status unresolved
+sentry issue view <ISSUE>
+sentry issue events <ISSUE> --limit 5
 ```
 
-## Unresolve Issues
+If the user asks for AI assistance or root-cause analysis:
 
 ```bash
-# Re-open a resolved issue
-sentry issues unresolve --id 123456
+sentry issue explain <ISSUE>
+sentry issue plan <ISSUE>
 ```
 
-## Show Issue Details
+### Resolve after a fix
+
+Confirm with the user first, then:
 
 ```bash
-# Show details for a single issue
-sentry issues show --id 7055684245
-
-# Show details for multiple issues
-sentry issues show --id 123456 --id 789012
+sentry issue resolve <ISSUE>
 ```
 
-Output includes: short ID, title, culprit, level, status, event count, user count, first/last seen, and permalink.
+### Query the API
 
-## Search Query Syntax
-
-The `--query` flag supports Sentry's search syntax:
-
-| Query                    | Description                          |
-| ------------------------ | ------------------------------------ |
-| `is:unresolved`          | Unresolved issues                    |
-| `is:resolved`            | Resolved issues                      |
-| `is:ignored`             | Ignored/muted issues                 |
-| `level:error`            | Error level only                     |
-| `level:warning`          | Warning level only                   |
-| `firstSeen:-24h`         | First seen in last 24 hours          |
-| `lastSeen:-7d`           | Last seen in last 7 days             |
-| `assigned:me`            | Assigned to you                      |
-| `assigned:none`          | Unassigned                           |
-
-Combine filters: `is:unresolved level:error lastSeen:-24h`
-
-Full syntax: https://docs.sentry.io/concepts/search/
-
-## Sentry API
-
-For anything beyond what the wrapper commands provide, use the REST API directly.
-
-Get the auth token (walks up directory tree like the wrapper):
-```bash
-find_sentryclirc() {
-  local dir="$PWD"
-  while [[ "$dir" != "/" ]]; do
-    [[ -f "$dir/.sentryclirc" ]] && echo "$dir/.sentryclirc" && return
-    dir="$(dirname "$dir")"
-  done
-  echo ~/.sentryclirc
-}
-SENTRY_AUTH_TOKEN=$(grep -A1 '^\[auth\]' "$(find_sentryclirc)" | grep token | cut -d'=' -f2 | tr -d ' ')
-```
-
-### API Reference
-
-- [Retrieve an Issue](https://docs.sentry.io/api/events/retrieve-an-issue/)
-- [Full API docs](https://docs.sentry.io/api/)
-
-## Global Options
-
-These work with all commands:
-
-| Option                     | Description                                   |
-| -------------------------- | --------------------------------------------- |
-| `-o, --org <ORG>`          | Override organization (default from config)   |
-| `-p, --project <PROJECT>`  | Override project (default from config)        |
-| `--auth-token <TOKEN>`     | Override auth token                           |
-| `--quiet`                  | Suppress output (for scripts)                 |
-| `--log-level <LEVEL>`      | Set verbosity: trace, debug, info, warn, error |
-
-## Common Workflows
-
-### After Deploying a Fix
+Use `sentry api` instead of manually building curl commands with tokens:
 
 ```bash
-# List unresolved issues
-sentry issues list --query "is:unresolved"
+# Endpoints are relative to /api/0/
+sentry api organizations/ --json
+sentry api issues/<ISSUE_ID>/ --json
 
-# Resolve the specific issue you fixed
-sentry issues resolve --id <ISSUE_ID>
+# Update issue status, after user confirmation
+sentry api issues/<ISSUE_ID>/ -X PUT -F status=resolved
 ```
 
-### Weekly Triage
+Use `sentry schema` to discover endpoints:
 
 ```bash
-# See all unresolved errors from the past week
-sentry issues list --query "is:unresolved lastSeen:-7d"
-
-# Mute noisy issues you can't fix right now
-sentry issues mute --id <ISSUE_ID>
+sentry schema issues
+sentry schema releases
 ```
 
-## Help
+## Search query syntax
+
+The `--query` flag supports Sentry search syntax:
+
+| Query | Description |
+| --- | --- |
+| `is:unresolved` | Unresolved issues |
+| `is:resolved` | Resolved issues |
+| `is:ignored` | Ignored/archived issues |
+| `level:error` | Error level only |
+| `level:warning` | Warning level only |
+| `firstSeen:-24h` | First seen in last 24 hours |
+| `lastSeen:-7d` | Last seen in last 7 days |
+| `assigned:me` | Assigned to you |
+| `assigned:none` | Unassigned |
+
+Combine filters with spaces, e.g.:
 
 ```bash
-sentry --help
-sentry issues --help
-sentry issues list --help
-sentry issues resolve --help
+sentry issue list --query "is:unresolved level:error lastSeen:-24h"
 ```
 
-## Status Page
+Full syntax: <https://docs.sentry.io/concepts/search/>
 
-Check Sentry's operational status and recent incidents:
+## Time filtering
+
+Many commands support `--period`:
 
 ```bash
-# Recent incident history (RSS feed)
-curl -s https://status.sentry.io/history.rss
-
-# Current status page
-# https://status.sentry.io
+sentry issue list --period 7d
+sentry issue list --period "2026-04-01..2026-05-01"
+sentry issue events <ISSUE> --period 24h
 ```
 
-Useful when investigating 403s, timeouts, or ingestion failures that may be on Sentry's side.
+## Legacy fallback
+
+This skill used to wrap the older `sentry-cli` binary.
+
+Files in this skill:
+
+```bash
+<skill-dir>/scripts/sentry              # Compatibility launcher; prefers modern `sentry`
+<skill-dir>/scripts/sentry-cli-wrapper  # Legacy wrapper around `sentry-cli`
+```
+
+Use the legacy wrapper only if the modern CLI is unavailable or a workflow specifically needs old `sentry-cli` behavior:
+
+```bash
+<skill-dir>/scripts/sentry-cli-wrapper config
+<skill-dir>/scripts/sentry-cli-wrapper projects
+<skill-dir>/scripts/sentry-cli-wrapper issues list --query "is:unresolved"
+```
+
+The compatibility launcher routes old plural commands (`issues`, `projects`, `config`) to the legacy wrapper and modern commands (`issue`, `project`, `org`, `api`, etc.) to the new `sentry` binary.
+
+You can force legacy behavior with:
+
+```bash
+SENTRY_SKILL_LEGACY=1 <skill-dir>/scripts/sentry issues list
+```
 
 ## Troubleshooting
 
-### "Invalid token" or 401 Errors
+### Not authenticated
 
-Check your configuration:
+Check safely:
+
 ```bash
-sentry config
+sentry org list --json --fields slug,name
 ```
 
-Verify the token works:
+If needed, ask the user to run:
+
 ```bash
-sentry info
+sentry auth login
 ```
 
-If this fails, your token may be expired or invalid. Generate a new one at:
-https://sentry.io/settings/account/api/auth-tokens/
+### Wrong org/project detected
 
-### "Project does not exist" Errors
+Retry with an explicit target:
 
-The project slug in your `.sentryclirc` may not match the actual Sentry project.
-
-List available projects:
 ```bash
-sentry projects
+sentry issue list <org>/<project> --query "is:unresolved"
+sentry issue list <org>/ --query "is:unresolved" # all projects in org
 ```
 
-Then update your `.sentryclirc` with the correct project slug.
+### Need compact or script-friendly output
 
-### Config Not Being Found
-
-The wrapper walks up from your current directory looking for `.sentryclirc`. Make sure:
-
-1. You're in a subdirectory of where `.sentryclirc` is located
-2. The file is named exactly `.sentryclirc` (not `.sentrycli.rc` etc.)
-3. The INI format is correct:
-
-```ini
-[auth]
-token=sntryu_xxx
-
-[defaults]
-org=my-org
-project=my-project
-```
-
-### Debug Mode
-
-For verbose output, add `--log-level=debug`:
 ```bash
-sentry --log-level=debug issues list
+sentry issue list --json --fields shortId,title,status,lastSeen --limit 10
 ```
+
+### Need current Sentry status
+
+```bash
+curl -s https://status.sentry.io/history.rss
+```
+
+Status page: <https://status.sentry.io>
+
+## Docs
+
+- CLI homepage: <https://cli.sentry.dev/>
+- Getting started: <https://cli.sentry.dev/getting-started/>
+- Agent guidance: <https://cli.sentry.dev/agent-guidance/>
+- Issue commands: <https://cli.sentry.dev/commands/issue/>
+- API command: <https://cli.sentry.dev/commands/api/>
