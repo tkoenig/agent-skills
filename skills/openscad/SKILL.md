@@ -100,6 +100,16 @@ When creating functional printable parts, account for FDM constraints before exp
 - Choose print orientation intentionally for layer strength, surface quality, holes, curves, and text.
 - Keep geometry manifold and slicer-friendly; print complex mating areas as small fit tests when practical.
 
+### Rounded and chamfered corners
+
+Prefer small radii/chamfers on exposed functional parts:
+- Rounded outer vertical corners improve feel, reduce stress concentration, and reduce sharp-corner print artifacts.
+- Rounded or chamfered plate corners can reduce warping and make parts less fragile at corners.
+- Use chamfers rather than underside fillets where a roundover would create unsupported overhangs.
+- Keep mating/slide surfaces simple and explicitly clearanced; if rounding a mating part, derive matching cutouts from the same rounded geometry.
+- For simple rectangular parts, a dependency-free `offset(r) square(...)` + `linear_extrude()` rounded-rectangle helper is often enough.
+- For complex 2D profiles with per-corner radii, consider project-local libraries such as `Round-Anything` (`polyRound`, `polyRoundExtrude`) as a reference or dependency.
+
 If the project has its own FDM checklist or printer profile notes, follow those for exact line widths, clearances, materials, and bridging limits.
 
 ## Workflow
@@ -263,6 +273,17 @@ square([x, y]);
 polygon(points = [[x1,y1], [x2,y2], ...]);
 text("string", size = 10);
 ```
+
+## Project-local OpenSCAD Libraries
+
+Before creating or heavily refactoring a model, check whether the project contains a relevant local OpenSCAD library or README (for example `UB.scad/README.md`). Use these as design-pattern references even when not importing the library.
+
+For simple parts, prefer plain dependency-free OpenSCAD. Borrow useful patterns from libraries when helpful:
+- Keep clear top-level parameters for nozzle/wall thickness, clearance, and fit tuning.
+- Prefer reusable modules for repeated shapes and matching boolean cutouts.
+- Use shared geometry for mating parts so clearanced `difference()` cutouts match the source shape.
+- Use line-width-aware dimensions and named clearance parameters, similar to UB.scad's `nozzle`, `spiel`, and wall helper concepts.
+- Only add a library dependency when it materially simplifies the model or improves robustness.
 
 ## Related Skills
 
