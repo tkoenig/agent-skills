@@ -1,7 +1,7 @@
 /**
  * Rubydex MCP tools for pi.
  *
- * Thin wrapper around MCPorter + Shopify's rubydex_mcp server.
+ * Thin wrapper around MCPorter + Shopify's Rubydex MCP server (`rdx --mcp`).
  * Requires a configured MCPorter server named `rubydex`.
  */
 

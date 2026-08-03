@@ -1,11 +1,13 @@
 # Rubydex MCP Extension
 
+> **Deprecated:** we now run `rdx --mcp` directly through pi-mcp-adapter (global config `~/.config/mcp/mcp.json`, `lifecycle: "keep-alive"`, `directTools: true`). That exposes the same 6 tools as native pi tools without the MCPorter hop. This extension is kept for reference and for setups without pi-mcp-adapter.
+
 Pi tools for Shopify Rubydex via MCPorter.
 
 This extension does **not** bundle Rubydex. It is a thin adapter:
 
 ```txt
-pi tool → this extension → MCPorter → rubydex_mcp → Rubydex engine
+pi tool → this extension → MCPorter → `rdx --mcp` → Rubydex engine
 ```
 
 ## What it adds
@@ -22,52 +24,41 @@ pi tool → this extension → MCPorter → rubydex_mcp → Rubydex engine
 - pi coding agent
 - Node/npm, for `npx mcporter`
 - MCPorter, either via `npx -y mcporter` or an installed binary
-- Rust toolchain `1.89.0` or newer to build `rubydex_mcp`
-- Shopify Rubydex MCP binary installed at `~/.cargo/bin/rubydex_mcp`
+- The `rubydex` gem (v0.2.9 or newer), which ships the MCP server as `rdx --mcp`
 - MCPorter config with a server named `rubydex`
 
-The `rubydex` Ruby gem is **not** required for this extension. The extension uses the Rust MCP server.
+**Upstream change:** Rubydex v0.2.9 replaced the Rust `rubydex_mcp` binary with a Ruby implementation (`rdx --mcp`) and removed the Rust server. Tool names and schemas are unchanged. Do not build the old Rust crate; it no longer exists upstream.
 
 ## Important caveats
 
-- Users currently need to build `rubydex_mcp` manually from Shopify's repository.
+- Users need the `rubydex` gem installed (v0.2.9+); the old manual Rust build is gone upstream.
 - The extension requires MCPorter to resolve a configured MCP server named `rubydex` by default. Without that `config/mcporter.json` or user-level MCPorter config, the pi tools will fail.
 - By default, the extension runs `npx -y mcporter`, which may download/use the latest MCPorter. Set `MCPORTER_BIN` to use a pinned/local MCPorter binary.
 - The extension shells out to MCPorter through `pi.exec`; it is not a native MCP client.
 - Rubydex MCP is experimental upstream.
 - Project `config/mcporter.json` often contains local paths. Prefer user-level MCPorter config if you do not want project repos to contain machine-specific MCP setup.
 
-## Install `rubydex_mcp`
+## Install `rdx` (Rubydex MCP server)
 
-Do **not** install `rubydex-mcp` from crates.io; as of this writing the crates.io package name is a placeholder. Build from Shopify's repository instead.
-
-```sh
-rustup toolchain install 1.89.0
-
-git clone --depth 1 --branch v0.2.3 https://github.com/Shopify/rubydex.git /tmp/rubydex-src
-cd /tmp/rubydex-src/rust
-
-TOOLCHAIN_DIR="$(rustup run 1.89.0 rustc --print sysroot)"
-RUSTC="$TOOLCHAIN_DIR/bin/rustc" "$TOOLCHAIN_DIR/bin/cargo" install --path rubydex-mcp --locked
-```
-
-If your `cargo` command comes from rustup shims, this shorter form may also work:
+The MCP server ships inside the `rubydex` gem. Install it globally via mise:
 
 ```sh
-cargo +1.89.0 install --path rubydex-mcp --locked
+mise use -g gem:rubydex@0.2.9
 ```
 
 Verify:
 
 ```sh
-~/.cargo/bin/rubydex_mcp --version
+rdx --version
 ```
 
 Expected shape:
 
 ```txt
-rubydex_mcp 0.1.0
+v0.2.9
 ```
+
+Update later with `mise upgrade gem:rubydex` (or `mise use -g gem:rubydex@latest`).
 
 ## Configure MCPorter
 
@@ -79,7 +70,8 @@ From the Ruby project root:
 
 ```sh
 npx -y mcporter config add rubydex \
-  --command "$HOME/.cargo/bin/rubydex_mcp" \
+  --command "$HOME/.local/share/mise/shims/rdx" \
+  --arg "--mcp" \
   --arg "$PWD" \
   --description "Rubydex MCP semantic Ruby code intelligence" \
   --scope home
@@ -95,7 +87,8 @@ From the Ruby project root:
 
 ```sh
 npx -y mcporter config add rubydex \
-  --command "$HOME/.cargo/bin/rubydex_mcp" \
+  --command "$HOME/.local/share/mise/shims/rdx" \
+  --arg "--mcp" \
   --arg "$PWD" \
   --description "Rubydex MCP semantic Ruby code intelligence" \
   --scope project
@@ -107,8 +100,8 @@ Then edit `config/mcporter.json` and add keep-alive if desired:
 {
   "mcpServers": {
     "rubydex": {
-      "command": "${HOME}/.cargo/bin/rubydex_mcp",
-      "args": ["/path/to/ruby/project"],
+      "command": "${HOME}/.local/share/mise/shims/rdx",
+      "args": ["--mcp", "/path/to/ruby/project"],
       "description": "Rubydex MCP semantic Ruby code intelligence",
       "lifecycle": "keep-alive"
     }
@@ -187,7 +180,7 @@ Environment variables:
 
 When an agent is asked to set this up for a Ruby project:
 
-1. Build/install `rubydex_mcp` if `~/.cargo/bin/rubydex_mcp --version` fails.
+1. Install the gem if `rdx --version` fails: `mise use -g gem:rubydex@latest`.
 2. Add MCPorter config with `--scope home` from the target project root, unless the user explicitly asks to commit project-local MCP config.
 3. Link this extension into `.pi/extensions/rubydex` for project-local activation, or `~/.pi/agent/extensions/rubydex` for global activation.
 4. Verify with `npx -y mcporter call rubydex.codebase_stats`.
