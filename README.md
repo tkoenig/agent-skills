@@ -97,6 +97,9 @@ VS Code integration for viewing diffs.
 ### commit
 Review and commit staged changes with verification, conventional commits, and optional PR creation.
 
+### dependabot
+Review all open Dependabot PRs, research upstream dependency changes, and recommend merge safety.
+
 ### pr-review
 Structured PR review with issue analysis and code quality checks.
 

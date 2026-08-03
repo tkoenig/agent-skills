@@ -5,6 +5,7 @@
 global_skills:
   # GitHub-hosted skills
   - brave-search
+  - librarian
 
   # Local skills
   - github
@@ -15,17 +16,22 @@ global_skills:
 # Prompts to link globally (~/.pi/agent/prompts/)
 global_prompts:
   - commit
+  - dependabot
   - pr-review
   - recent-changes
 
 # Extensions to link globally (~/.pi/agent/extensions/)
 global_extensions:
-  - infra-guard
   - openai-image-gen
   - current-pr
 
 # GitHub-hosted skills
 github_skills:
+  - https://github.com/plannotator/effective-html/tree/main/skills/html-plan
+  - https://github.com/plannotator/effective-html/tree/main/skills/html-diagram
+  - https://github.com/plannotator/effective-html/tree/main/skills/html
+  - https://github.com/grafana/skills/blob/main/skills/grafana-k6/k6/SKILL.md
+  - https://github.com/mitsuhiko/agent-stuff/tree/main/skills/librarian
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-stimulus-fundamentals
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-media-content
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-realtime-streaming
