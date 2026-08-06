@@ -60,6 +60,9 @@ DaisyUI 5 components and Tailwind CSS 4 templates.
 GitHub CLI integration (`gh` for issues, PRs, CI).  
 **Install:** `brew install gh`
 
+### grafana-k6-load-testing
+Run and analyze Grafana Cloud k6 tests through the CLI and a token-safe, read-only REST API.
+
 ### hcloud
 Hetzner Cloud management via `hcloud` CLI.  
 **Install:** `brew install hcloud`

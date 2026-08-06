@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "net/http"
+require "uri"
+
+USAGE = <<~TEXT
+  Usage:
+    k6-api run RUN_ID
+    k6-api metrics RUN_ID
+    k6-api series RUN_ID 'METRIC{label="value"}'
+TEXT
+
+command, run_id, *arguments = ARGV
+abort USAGE unless %w[run metrics series].include?(command) && run_id&.match?(/\A\d+\z/)
+abort "K6_CLOUD_TOKEN is required" if ENV.fetch("K6_CLOUD_TOKEN", "").empty?
+
+path = "/cloud/v5/test_runs/#{run_id}"
+params = {}
+
+case command
+when "metrics"
+  path += "/metrics"
+when "series"
+  selector = arguments.join(" ")
+  abort USAGE if selector.empty?
+
+  path += "/series"
+  params["match[]"] = selector
+end
+
+uri = URI("https://api.k6.io#{path}")
+uri.query = URI.encode_www_form(params) if params.any?
+request = Net::HTTP::Get.new(uri)
+request["Accept"] = "application/json"
+request["Authorization"] = "Bearer #{ENV.fetch("K6_CLOUD_TOKEN")}" # never log this header
+
+response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+unless response.is_a?(Net::HTTPSuccess)
+  abort "Grafana Cloud k6 API request failed: HTTP #{response.code}"
+end
+
+payload = JSON.parse(response.body)
+
+case command
+when "run"
+  fields = %w[id run_status result_status processing_status started ended duration vus project_id load_test_id]
+  puts JSON.pretty_generate(payload.slice(*fields))
+when "metrics"
+  metrics = payload.fetch("value", []).map { |metric| metric.slice("id", "name", "type", "origin", "labels") }
+  puts JSON.pretty_generate(metrics)
+when "series"
+  puts JSON.pretty_generate(payload)
+end
