@@ -34,7 +34,7 @@ Prefer Cloudflare MCP Code Mode for broad or unknown Cloudflare API work. Use th
 | Analytics / GraphQL reporting | `cloudflare-analytics` skill first; MCP fallback |
 | MCP unavailable or unauthenticated | Local scripts + Cloudflare `llms.txt` fallback |
 
-For MCP `execute`, read-only API calls are okay. Ask the user before `POST`, `PUT`, `PATCH`, or `DELETE`, especially for DNS records, R2 buckets, tunnels, rulesets, WAF, Workers, and access/security settings.
+For MCP `execute`, read-only API calls are okay. MCP OAuth permissions are chosen during the initial OAuth authorization (or re-authorization), not requested per API call; operations outside the granted scopes will fail. Assume MCP access is read-only unless the user explicitly confirms broader scopes. Ask the user before `POST`, `PUT`, `PATCH`, or `DELETE`, especially for DNS records, R2 buckets, tunnels, rulesets, WAF, Workers, and access/security settings.
 
 ## Cloudflare MCP (preferred: pi-mcp-adapter)
 
