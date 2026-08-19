@@ -27,6 +27,7 @@ global_extensions:
 
 # GitHub-hosted skills
 github_skills:
+  - https://github.com/evilmartians/agent-skills/tree/main/skills/tailwind-best-practices
   - https://github.com/plannotator/effective-html/tree/main/skills/html-plan
   - https://github.com/plannotator/effective-html/tree/main/skills/html-diagram
   - https://github.com/plannotator/effective-html/tree/main/skills/html
