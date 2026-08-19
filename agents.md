@@ -19,4 +19,5 @@ Do this before creating, editing, or validating any skill.
 - When listing skills, use the `skill-manager` skill - it has a tool for this
 - Do NOT automatically symlink or activate skills - let the user decide
 - When adding/removing global skills, always update `config.yml` (used for bootstrapping new machines)
+- After finishing a skill or extension change, ask whether to commit and push it unless the user already requested that
 - For macOS software changes, use the `macos-software-management` skill and keep dotfiles manifests in sync
