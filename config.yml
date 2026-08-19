@@ -9,6 +9,7 @@ global_skills:
 
   # Local skills
   - github
+  - macos-software-management
   - safari-cli
   - skill-manager
   - vscode
