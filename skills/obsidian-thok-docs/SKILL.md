@@ -15,19 +15,19 @@ Primary Obsidian vault path:
 /Users/tom/Library/Mobile Documents/iCloud~md~obsidian/Documents/Thok
 ```
 
-Obsidian CLI/binary exists at:
+The official Obsidian CLI is enabled and available as:
 
 ```text
-/Applications/Obsidian.app/Contents/MacOS/obsidian
+/opt/homebrew/bin/obsidian
 ```
 
-But previous sessions found the CLI support unreliable/outdated for listing/updating notes. Prefer editing Markdown files directly on disk.
+It was verified with Obsidian 1.13.7 and the `Thok` vault. Use it for vault-aware listing, search, reading, links, and other Obsidian operations. Direct Markdown edits remain appropriate for precise file changes.
 
 ## Workflow
 
-1. Locate existing notes with `find`/`rg` under the vault.
-2. Read the relevant Markdown file before editing.
-3. Update via precise `edit` calls, or `write` for new notes.
+1. Locate notes with `obsidian vault=Thok search query="…"`, or use `find`/`rg` on disk.
+2. Read with `obsidian vault=Thok read path="…"` or the `read` tool before editing.
+3. Use Obsidian CLI commands when vault semantics matter; otherwise use precise `edit` calls or `write` for new notes.
 4. Keep notes human-readable and in German unless the existing note uses another language.
 5. Preserve personal data in Obsidian notes, not in this skill.
 
