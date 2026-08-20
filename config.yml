@@ -7,8 +7,9 @@ global_skills:
   - brave-search
   - librarian
 
-  # Local skills
+  # Local and externally managed skills
   - github
+  - hunk-review
   - macos-software-management
   - safari-cli
   - skill-manager
@@ -40,6 +41,5 @@ github_skills:
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-navigation-content
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-forms-validation
   - https://github.com/TheHotwireClub/hotwire_club-skills/tree/main/skills/hwc-ux-feedback
-  - https://github.com/modem-dev/hunk/tree/main/skills/hunk-review
   - https://github.com/vm0-ai/vm0-skills/blob/main/plausible/SKILL.md
   - https://github.com/badlogic/pi-skills/tree/main/browser-tools

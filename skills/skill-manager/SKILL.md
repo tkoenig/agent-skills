@@ -6,7 +6,7 @@ description: Manage and list agent skills, prompts, and extensions - globally (~
 # Skill Manager
 
 Manage agent skills, prompts, and extensions for global or project-specific use. Use when the user wants to:
-- Install or find skills (check local repo first, then ClawdHub)
+- Install or find skills from the local repository or GitHub
 - Link/unlink skills, prompts, or extensions globally or to a project
 - List available/installed skills, prompts, and extensions
 - Set up project-level `.pi/` configuration
@@ -42,13 +42,13 @@ REPO=$(dirname $(dirname "$SKILL_PATH"))
 "$REPO/skills/skill-manager/tools/list-skills"
 ```
 
-Output is a JSON array with fields: `name`, `source` (local/clawdhub), `global` (bool), `local` (bool).
+Output is a JSON array with fields: `name`, `source` (local/github), `global` (bool), `local` (bool).
 
 Format as a table for the user:
 
 | Skill | Source | Active |
 |-------|--------|--------|
-| name | local/clawdhub | ✓ (g) / ✓ (l) / ✓ (l)(g) / empty |
+| name | local/github | ✓ (g) / ✓ (l) / ✓ (l)(g) / empty |
 
 - ✓ (g) = globally linked (~/.pi/agent/skills/)
 - ✓ (l) = project-linked (.pi/skills/)
@@ -90,71 +90,13 @@ ls -la .pi/extensions
 
 ## Disambiguate Request Type (Skill vs Prompt vs Extension)
 
-Before searching/installing:
+Before installing:
 
-1. If user asks for a **prompt** (e.g. "link pr-review"), use `$REPO/prompts/*.md` and prompt link paths.
-2. If user asks for a **skill**, use skill workflow below (local/github/ClawdHub).
-3. If user asks for an **extension**, use `$REPO/extensions/*` and extension link paths.
+1. If the user asks for a **prompt** (e.g. "link pr-review"), use `$REPO/prompts/*.md` and prompt link paths.
+2. If the user asks for a **skill**, check `$REPO/skills/` and `$REPO/github/skills/` first.
+3. If the user asks for an **extension**, use `$REPO/extensions/*` and extension link paths.
 
-Do not run ClawdHub skill search for prompt-only requests.
-
-## Installing a Skill — Search Order
-
-When asked to install a skill, check these locations **in order** before searching ClawdHub:
-
-1. `$REPO/skills/` — locally authored skills
-2. `$REPO/github/skills/` — previously installed GitHub skills
-
-If a match is found, skip ClawdHub and offer to link it directly.
-
-## Search ClawdHub for Skills
-
-Search for skills on ClawdHub by keyword or description:
-
-```bash
-clawdhub search "github"
-clawdhub search "web scraping"
-clawdhub search "database"
-```
-
-When the user needs a capability not covered by installed skills, search ClawdHub and suggest relevant results.
-
-## Updating ClawdHub Skills
-
-Update a specific skill to the latest version:
-
-```bash
-SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
-REPO=$(dirname $(dirname "$SKILL_PATH"))
-
-# Update a specific skill
-clawdhub update <skill-name> --workdir "$REPO/clawdhub"
-
-# Update to a specific version
-clawdhub update <skill-name> --version 1.2.3 --workdir "$REPO/clawdhub"
-
-# Update all installed skills
-clawdhub update --all --workdir "$REPO/clawdhub"
-
-# Force update (skip hash check)
-clawdhub update <skill-name> --force --workdir "$REPO/clawdhub"
-```
-
-## Installing a ClawdHub Skill
-
-Install a skill from ClawdHub to the repo:
-
-```bash
-SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
-REPO=$(dirname $(dirname "$SKILL_PATH"))
-
-clawdhub install <skill-slug> --workdir "$REPO/clawdhub"
-```
-
-After installing, ask the user if they want to:
-1. Link it globally (to `~/.pi/agent/skills/`)
-2. Link it to the current project (to `.pi/skills/`)
-3. Leave it unlinked for now
+If no skill matches, ask for or identify a GitHub skill URL before installing it.
 
 ## Installing a Skill from GitHub
 
@@ -178,7 +120,7 @@ Example:
 
 Skills are installed to `$REPO/github/skills/<skill-name>` and the URL is added to `config.yml` under `github_skills:` for tracking.
 
-After installing, ask the user if they want to link it (same as ClawdHub skills):
+After installing, ask whether to link it globally, to the current project, or leave it unlinked:
 ```bash
 # Link globally
 ln -sf "$REPO/github/skills/<skill-name>" ~/.pi/agent/skills/
@@ -202,27 +144,6 @@ REPO=$(dirname $(dirname "$SKILL_PATH"))
 "$REPO/skills/skill-manager/tools/github-update" <skill-name>
 ```
 
-## Uninstalling a ClawdHub Skill
-
-There is no `clawdhub uninstall` command. To uninstall manually:
-
-```bash
-SKILL_PATH=$(readlink -f ~/.pi/agent/skills/skill-manager)
-REPO=$(dirname $(dirname "$SKILL_PATH"))
-
-# 1. Remove global symlink if it exists
-rm -f ~/.pi/agent/skills/<skill-name>
-
-# 2. Remove project symlink if it exists
-rm -f .pi/skills/<skill-name>
-
-# 3. Delete the skill folder
-rm -rf "$REPO/clawdhub/skills/<skill-name>"
-
-# 4. Remove from lockfile
-# Edit $REPO/clawdhub/.clawdhub/lock.json and remove the skill entry
-```
-
 ## Linking Skills Globally
 
 Link a skill to make it available in all projects:
@@ -234,8 +155,8 @@ REPO=$(dirname $(dirname "$SKILL_PATH"))
 # Link a local skill
 ln -sf "$REPO/skills/<skill-name>" ~/.pi/agent/skills/
 
-# Link a ClawdHub skill
-ln -sf "$REPO/clawdhub/skills/<skill-name>" ~/.pi/agent/skills/
+# Link a GitHub-installed skill
+ln -sf "$REPO/github/skills/<skill-name>" ~/.pi/agent/skills/
 ```
 
 ## Unlinking Global Skills
@@ -257,8 +178,8 @@ mkdir -p .pi/skills
 # Link a local skill
 ln -sf "$REPO/skills/<skill-name>" .pi/skills/
 
-# Link a ClawdHub skill
-ln -sf "$REPO/clawdhub/skills/<skill-name>" .pi/skills/
+# Link a GitHub-installed skill
+ln -sf "$REPO/github/skills/<skill-name>" .pi/skills/
 ```
 
 ## Linking Prompts Globally
@@ -352,7 +273,7 @@ When setting up skills for a project, analyze it and suggest relevant skills:
 2. If `package.json` exists, check dependencies
 3. If `Gemfile` exists, check gems: `grep -E "gem ['\"]sentry|tailwind" Gemfile`
 4. Suggest relevant skills/prompts/extensions based on findings and repo README/config
-5. If no matching installed skill exists, search ClawdHub: `clawdhub search "<need>"` (skills only)
+5. If no matching installed skill exists, ask for or identify a GitHub skill URL
 6. Ask user to confirm before linking/installing
 7. Create symlinks for confirmed items
 
@@ -373,7 +294,7 @@ I found:
 - .git/ → suggest: github
 - Gemfile with sentry-ruby → suggest: sentry
 - Gemfile with tailwindcss-rails → suggest: daisyui
-- config/database.yml with postgres → no installed skill, searching ClawdHub...
+- config/database.yml with postgres → no installed skill; ask whether to find/install a GitHub skill
 
 Shall I link github, sentry, daisyui?
 ```

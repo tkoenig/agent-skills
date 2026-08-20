@@ -34,24 +34,6 @@ for skill in "$REPO/skills/"*/; do
   printf '{"name":"%s","source":"local","global":%s,"local":%s}' "$name" "$global_flag" "$local_flag"
 done
 
-# ClawdHub skills
-for skill in "$REPO/clawdhub/skills/"*/; do
-  [ -d "$skill" ] || continue
-  name=$(basename "$skill")
-  
-  is_global=$(echo "$global_skills" | grep -w "$name" || true)
-  is_local=$(echo "$local_skills" | grep -w "$name" || true)
-  
-  global_flag="false"
-  local_flag="false"
-  [[ -n "$is_global" ]] && global_flag="true"
-  [[ -n "$is_local" ]] && local_flag="true"
-  
-  [[ "$first" == "true" ]] || echo ","
-  first=false
-  printf '{"name":"%s","source":"clawdhub","global":%s,"local":%s}' "$name" "$global_flag" "$local_flag"
-done
-
 # GitHub skills
 for skill in "$REPO/github/skills/"*/; do
   [ -d "$skill" ] || continue

@@ -67,6 +67,11 @@ Run and analyze Grafana Cloud k6 tests through the CLI and a token-safe, read-on
 Hetzner Cloud management via `hcloud` CLI.  
 **Install:** `brew install hcloud`
 
+### hunk-review
+Review live Hunk sessions using the skill bundled with the installed CLI. `skills/hunk-review` follows Homebrew's stable Hunk path so skill instructions update with Hunk.
+
+**Install:** `brew install hunk`
+
 ### heroku
 Manage Heroku apps, dynos, add-ons, config, and restarts via Heroku CLI/API.
 
@@ -91,9 +96,6 @@ Manage and inspect UniFi Network controllers via `uvx unifi-cli`.
 
 ### vscode
 VS Code integration for viewing diffs.
-
-### ClawdHub Skills
-- `tavily-search` - Web search
 
 ## Prompts
 
