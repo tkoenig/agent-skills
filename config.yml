@@ -21,6 +21,8 @@ global_prompts:
   - dependabot
   - pr-review
   - recent-changes
+  - simplify
+  - wait-what
 
 # Extensions to link globally (~/.pi/agent/extensions/)
 global_extensions:

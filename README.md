@@ -111,6 +111,12 @@ Structured PR review with issue analysis and code quality checks.
 ### recent-changes
 Show recent git commits by other team members since your last work session.
 
+### simplify
+Simplify the current implementation while preserving behavior.
+
+### wait-what
+Re-pitch the previous response with brief context and concise Simplified Technical English.
+
 ## Extensions
 
 ### infra-guard
