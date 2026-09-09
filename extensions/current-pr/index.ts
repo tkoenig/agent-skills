@@ -174,15 +174,21 @@ export default function (pi: ExtensionAPI) {
   let refreshInFlight = false;
   let refreshPending = false;
   let customFooterEnabled = true;
+  // Session replacement/reload creates a new extension instance. Never revive this one.
+  let stopped = false;
 
   async function exec(command: string, args: string[], options: { cwd?: string; timeout: number }): Promise<ExecResult> {
+    if (stopped) throw new Error("Current PR session stopped");
     currentAbort = new AbortController();
     try {
-      return await pi.exec(command, args, {
+      const result = await pi.exec(command, args, {
         cwd: options.cwd,
         timeout: options.timeout,
         signal: currentAbort.signal,
       });
+      // Aborted processes may still resolve successfully. Stop chained gh calls too.
+      if (stopped) throw new Error("Current PR session stopped");
+      return result;
     } finally {
       currentAbort = undefined;
     }
@@ -259,6 +265,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function setCurrentPr(pr: PrInfo | undefined, ctx: ExtensionContext): void {
+    if (stopped) return;
     currentPr = pr;
 
     if (customFooterEnabled) {
@@ -277,7 +284,9 @@ export default function (pi: ExtensionAPI) {
 
   function scheduleRefresh(delayMs = 0): void {
     clearTimer();
+    if (stopped) return;
     timer = setTimeout(() => {
+      timer = undefined;
       void refresh();
     }, delayMs);
   }
@@ -288,7 +297,7 @@ export default function (pi: ExtensionAPI) {
 
   async function refresh(force = false): Promise<void> {
     const ctx = latestCtx;
-    if (!ctx) return;
+    if (stopped || !ctx) return;
 
     if (!force && !ctx.isIdle()) {
       refreshPending = true;
@@ -350,6 +359,7 @@ export default function (pi: ExtensionAPI) {
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       const unsubscribeBranch = footerData.onBranchChange(() => {
+        if (stopped) return;
         refreshPending = true;
         scheduleRefresh(0);
         tui.requestRender();
@@ -359,6 +369,7 @@ export default function (pi: ExtensionAPI) {
         dispose: unsubscribeBranch,
         invalidate() {},
         render(width: number): string[] {
+          if (stopped) return [];
           let totalInput = 0;
           let totalOutput = 0;
           let totalCacheRead = 0;
@@ -512,11 +523,13 @@ export default function (pi: ExtensionAPI) {
       if (parsed) {
         pinnedPr = parsed;
         await refresh(true);
+        if (stopped) return;
         ctx.ui.notify(currentPr ? plainStatus(currentPr) : "PR not found", currentPr ? "info" : "warning");
         return;
       }
 
       await refresh(true);
+      if (stopped) return;
       ctx.ui.notify(currentPr ? plainStatus(currentPr) : "No PR detected for this branch", currentPr ? "info" : "warning");
     },
   });
@@ -547,6 +560,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    stopped = true;
+    latestCtx = undefined;
+    refreshPending = false;
     clearTimer();
     currentAbort?.abort();
   });
