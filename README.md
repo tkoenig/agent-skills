@@ -89,7 +89,9 @@ Sentry error tracking and issue management.
 Manage project-level skills (local only by default).
 
 ### slack-assistant
-Slack channel monitoring and message posting.
+Directory-scoped Slack search, reading, and native unsent drafts via SlackCLI. Routes `~/Development/wearedevs/` and `~/Development/wollzelle/` to explicitly bound workspace profiles. Draft-first; send in Slack or explicitly approve an agent send, including attachments or Block Kit layouts.
+
+**Install:** `brew install shaharia-lab/tap/slackcli` (tracked in dotfiles). See the skill for interactive browser login and workspace binding. Credentials use SlackCLI's private native storage, not fnox.
 
 ### unifi
 Manage and inspect UniFi Network controllers via `uvx unifi-cli`.

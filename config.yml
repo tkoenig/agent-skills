@@ -13,6 +13,7 @@ global_skills:
   - macos-software-management
   - safari-cli
   - skill-manager
+  - slack-assistant
   - vscode
 
 # Prompts to link globally (~/.pi/agent/prompts/)

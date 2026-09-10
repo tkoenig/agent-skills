@@ -1,211 +1,117 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ -z "${SLACK_USER_TOKEN:-}" ]]; then
-  echo "SLACK_USER_TOKEN is not set" >&2
-  exit 1
-fi
-
-usage() {
-  cat <<'USAGE'
-Usage:
-  slack-assistant list-users
-  slack-assistant presence --user U12345678
-  slack-assistant send-channel --channel C12345678 --text "Hello"
-  slack-assistant dm --user U12345678 --text "Hello"
-USAGE
-}
-
-slack_get() {
-  local url="$1"
-  curl -sS -X GET "$url" \
-    -H "Authorization: Bearer $SLACK_USER_TOKEN" \
-    -H "Content-Type: application/x-www-form-urlencoded"
-}
-
-slack_post() {
-  local url="$1"
-  local payload="$2"
-  curl -sS -X POST "$url" \
-    -H "Authorization: Bearer $SLACK_USER_TOKEN" \
-    -H "Content-type: application/json; charset=utf-8" \
-    --data "$payload"
-}
-
-command=${1:-}
-shift || true
-
-case "$command" in
-  list-users)
-    response=$(slack_get "https://slack.com/api/users.list")
-    printf '%s' "$response" | python -c 'import json,sys
-resp=json.load(sys.stdin)
-if not resp.get("ok"):
-    print(f"Slack API error: {resp}", file=sys.stderr)
-    sys.exit(1)
-print("id\tusername\treal_name\ttype")
-for member in resp.get("members", []):
-    if member.get("deleted"):
-        continue
-    name = member.get("name") or ""
-    profile = member.get("profile") or {}
-    real_name = member.get("real_name") or profile.get("real_name") or ""
-    kind = "bot" if member.get("is_bot") else "user"
-    print("{}\t{}\t{}\t{}".format(member.get("id", ""), name, real_name, kind))'
-    ;;
-  presence)
-    user_id=""
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --user)
-          user_id="$2"
-          shift 2
-          ;;
-        -h|--help)
-          usage
-          exit 0
-          ;;
-        *)
-          echo "Unknown option: $1" >&2
-          usage
-          exit 1
-          ;;
-      esac
-    done
-
-    if [[ -z "$user_id" ]]; then
-      usage
-      exit 1
-    fi
-
-    response=$(slack_get "https://slack.com/api/users.getPresence?user=$user_id")
-    printf '%s' "$response" | python -c 'import json,sys
-resp=json.load(sys.stdin)
-if not resp.get("ok"):
-    print(f"Slack API error: {resp}", file=sys.stderr)
-    sys.exit(1)
-print("Presence: {}".format(resp.get("presence", "unknown")))'
-    ;;
-  send-channel)
-    channel_id=""
-    message_text=""
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --channel)
-          channel_id="$2"
-          shift 2
-          ;;
-        --text)
-          message_text="$2"
-          shift 2
-          ;;
-        -h|--help)
-          usage
-          exit 0
-          ;;
-        *)
-          echo "Unknown option: $1" >&2
-          usage
-          exit 1
-          ;;
-      esac
-    done
-
-    if [[ -z "$channel_id" || -z "$message_text" ]]; then
-      usage
-      exit 1
-    fi
-
-    payload=$(SLACK_CHANNEL_ID="$channel_id" SLACK_MESSAGE_TEXT="$message_text" python - <<'PY'
+#!/usr/bin/env python3
+"""Directory-scoped, draft-first SlackCLI entry point. Never prints credentials."""
 import json
 import os
+from pathlib import Path
+import sys
 
-print(json.dumps({"channel": os.environ["SLACK_CHANNEL_ID"], "text": os.environ["SLACK_MESSAGE_TEXT"]}))
-PY
-)
+ORG_NAMES = ("wearedevs", "wollzelle")
+ALLOWED = {
+    ("conversations", "list"), ("conversations", "read"),
+    ("conversations", "get"), ("conversations", "unread"),
+    ("search", "messages"), ("search", "channels"), ("search", "people"),
+    ("messages", "draft"), ("saved", "list"), ("team", "info"),
+    ("canvas", "list"), ("canvas", "read"), ("files", "info"),
+    ("files", "read"),
+}
+HELP = """Usage: slack-assistant [--workspace wearedevs|wollzelle] COMMAND ...
+  bind ORGANIZATION PROFILE_KEY   Bind a directory to a logged-in Slack profile
+  context                         Show locally bound organization and workspace
+  team info --json                Verify live access to the selected workspace
+  draft OPTIONS                   Create an unsent Slack draft
+  send-approved OPTIONS           Send only after explicit user approval
+  conversations list|read|get|unread OPTIONS
+  search messages|channels|people OPTIONS
+  messages draft OPTIONS
+  saved list | canvas list|read | files info|read
 
-    response=$(slack_post "https://slack.com/api/chat.postMessage" "$payload")
-    printf '%s' "$response" | python -c 'import json,sys
-resp=json.load(sys.stdin)
-if not resp.get("ok"):
-    print(f"Slack API error: {resp}", file=sys.stderr)
-    sys.exit(1)
-print("Message sent (ts={}).".format(resp.get("ts", "")))'
-    ;;
-  dm)
-    user_id=""
-    message_text=""
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --user)
-          user_id="$2"
-          shift 2
-          ;;
-        --text)
-          message_text="$2"
-          shift 2
-          ;;
-        -h|--help)
-          usage
-          exit 0
-          ;;
-        *)
-          echo "Unknown option: $1" >&2
-          usage
-          exit 1
-          ;;
-      esac
-    done
+Uses the calling directory under ~/Development/wearedevs or ~/Development/wollzelle.
+Outside those roots, --workspace is required. Sending requires send-approved.
+Login interactively with: slackcli auth login-auto
+Find profile keys with: slackcli auth list
+"""
 
-    if [[ -z "$user_id" || -z "$message_text" ]]; then
-      usage
-      exit 1
-    fi
 
-    dm_payload=$(SLACK_USER_ID="$user_id" python - <<'PY'
-import json
-import os
+def organization(cwd, home, explicit=None):
+    if explicit:
+        if explicit not in ORG_NAMES:
+            raise ValueError("Workspace must be wearedevs or wollzelle.")
+        return explicit
+    cwd = cwd.resolve()
+    for name in ORG_NAMES:
+        root = (home / "Development" / name).resolve()
+        if cwd == root or root in cwd.parents:
+            return name
+    raise ValueError("Outside workspace roots; specify --workspace wearedevs|wollzelle.")
 
-print(json.dumps({"users": os.environ["SLACK_USER_ID"]}))
-PY
-)
 
-    dm_response=$(slack_post "https://slack.com/api/conversations.open" "$dm_payload")
-    channel_id=$(printf '%s' "$dm_response" | python -c 'import json,sys
-resp=json.load(sys.stdin)
-if not resp.get("ok"):
-    print("", end="")
-    sys.exit(1)
-print(resp["channel"]["id"])')
+def load_profiles(config_dir):
+    credentials = config_dir / "workspaces.json"
+    if not credentials.exists():
+        raise ValueError("First run slackcli auth login-auto in your terminal.")
+    return json.loads(credentials.read_text())["workspaces"]
 
-    if [[ -z "$channel_id" ]]; then
-      echo "Failed to open DM." >&2
-      exit 1
-    fi
 
-    message_payload=$(SLACK_CHANNEL_ID="$channel_id" SLACK_MESSAGE_TEXT="$message_text" python - <<'PY'
-import json
-import os
+def main(args):
+    if not args or args == ["--help"] or args == ["-h"]:
+        print(HELP)
+        return
+    home = Path.home()
+    config_dir = home / ".config" / "slackcli"
+    routes_file = config_dir / "directory-workspaces.json"
+    explicit = None
+    if args[0] == "--workspace":
+        if len(args) < 3:
+            raise ValueError("--workspace requires an organization and command.")
+        explicit, args = args[1], args[2:]
+    elif args[0].startswith("--workspace="):
+        explicit, args = args[0].split("=", 1)[1], args[1:]
+    if not args:
+        raise ValueError("A command is required.")
+    if any(arg == "--workspace" or arg.startswith("--workspace=") for arg in args):
+        raise ValueError("Pass --workspace before the command; use organization aliases only.")
+    if args[:2] == ["team", "info"] and any(arg == "--team" or arg.startswith("--team=") for arg in args[2:]):
+        raise ValueError("team info must check the bound workspace; --team overrides are not allowed.")
+    routes = json.loads(routes_file.read_text()) if routes_file.exists() else {}
+    if args[0] == "bind":
+        if explicit or len(args) != 3 or args[1] not in ORG_NAMES:
+            raise ValueError("Usage: bind wearedevs|wollzelle PROFILE_KEY")
+        profile = load_profiles(config_dir).get(args[2])
+        if not profile:
+            raise ValueError("Unknown profile key. Run slackcli auth list.")
+        if profile.get("auth_type") != "browser":
+            raise ValueError("Drafts require browser authentication; run slackcli auth login-auto.")
+        routes[args[1]] = {"profile": args[2], "team_id": profile["workspace_id"]}
+        routes_file.write_text(json.dumps(routes, indent=2) + "\n")
+        routes_file.chmod(0o600)
+        print(f"Bound {args[1]} to {profile['workspace_name']} ({profile['workspace_id']}).")
+        return
+    org = organization(Path.cwd(), home, explicit)
+    route = routes.get(org)
+    if not route:
+        raise ValueError(f"No binding for {org}. Run: slack-assistant bind {org} PROFILE_KEY")
+    if args[0] == "draft":
+        args = ["messages", "draft", *args[1:]]
+    if args[0] == "send-approved":
+        args = ["messages", "send", *args[1:]]
+    elif args != ["context"] and tuple(args[:2]) not in ALLOWED:
+        raise ValueError("Command not allowed. Use reads/drafts, or send-approved after user approval.")
+    profile = load_profiles(config_dir).get(route["profile"])
+    if not profile or profile["workspace_id"] != route["team_id"]:
+        raise ValueError("Workspace binding no longer matches the stored profile. Re-bind explicitly.")
+    print(f"Slack: {org} / {profile['workspace_name']} ({route['team_id']})", file=sys.stderr)
+    if args == ["context"]:
+        return
+    os.execvp("slackcli", ["slackcli", *args, "--workspace", route["profile"]])
 
-print(json.dumps({"channel": os.environ["SLACK_CHANNEL_ID"], "text": os.environ["SLACK_MESSAGE_TEXT"]}))
-PY
-)
 
-    response=$(slack_post "https://slack.com/api/chat.postMessage" "$message_payload")
-    printf '%s' "$response" | python -c 'import json,sys
-resp=json.load(sys.stdin)
-if not resp.get("ok"):
-    print(f"Slack API error: {resp}", file=sys.stderr)
-    sys.exit(1)
-print("Message sent (ts={}).".format(resp.get("ts", "")))'
-    ;;
-  -h|--help|"")
-    usage
-    exit 0
-    ;;
-  *)
-    echo "Unknown command: $command" >&2
-    usage
-    exit 1
-    ;;
-esac
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except (json.JSONDecodeError, OSError, KeyError):
+        # Never dump credential records or tracebacks on configuration failures.
+        print("Slack configuration unavailable or invalid. Check login and bindings.", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
