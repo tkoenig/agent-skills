@@ -60,7 +60,7 @@ send-approved --recipient-id=C_OR_U_ID --message='APPROVED TEXT' --json
 send-approved --permalink=URL --message='APPROVED REPLY' --json
 ```
 
-A `U…` recipient opens a DM. Use `--message-file` for long text instead of fragile shell quoting. See the main skill for approval and attachments, and [block-kit.md](block-kit.md) for structured layouts.
+A `U…` recipient opens a DM. For approved text-only sends, add `--blocks` with a `markdown` block containing the standard Markdown message; retain `--message`/`--message-file` as the notification/accessibility fallback. The examples above show targeting, not the default block payload. File attachments cannot accompany `--blocks`; use Slack markup with those sends and with drafts. Use `--message-file` for long fallback/draft text instead of fragile shell quoting. See the main skill for approval and attachments, and [block-kit.md](block-kit.md) for payload examples.
 
 | Result | JSON handles to retain | Report |
 | --- | --- | --- |

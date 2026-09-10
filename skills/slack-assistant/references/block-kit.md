@@ -1,8 +1,8 @@
 # Block Kit quick reference
 
-Use Block Kit for structured messages that benefit from a layout. Prefer ordinary Slack markup for everyday messages. This is a practical reference, not a copy of the full specification.
+Default to a `markdown` block for approved text-only sends. Use richer layouts when they add value; use ordinary Slack markup for drafts and messages with file attachments. This is a practical reference, not a copy of the full specification.
 
-Researched against official Slack docs on **2026-09-10**, with SlackCLI **0.11.0**. Advanced layouts below are documentation-verified, not live-tested with our browser-session credentials. CLI acceptance of JSON does not guarantee Slack will accept a block for this identity or surface.
+Researched against official Slack docs on **2026-09-10**, with SlackCLI **0.11.0**. Live-tested in WeAreDevelopers with browser-session credentials: `markdown` (2,956-character contract, user confirmed rendering), rich text, table and image blocks (send accepted). Other advanced features below are documentation-verified only. CLI acceptance of JSON does not guarantee Slack will accept every block for an identity or surface.
 
 ## SlackCLI limits
 
@@ -85,7 +85,7 @@ The newer [`markdown` block](https://docs.slack.dev/reference/block-kit/blocks/m
 ]
 ```
 
-The docs describe this block for apps using platform AI features; do not assume availability with our browser-session identity. Slack translates it into one or more blocks and ignores its `block_id`. Prefer `section` + `mrkdwn` when advanced Markdown is unnecessary. Task-list rendering alone does not implement an approval workflow.
+The docs describe this block for apps using platform AI features; we have also verified it works with our WeAreDevelopers browser-session identity. Recheck compatibility for other identities rather than assuming universal support. Slack translates it into one or more blocks and ignores its `block_id`. Task-list rendering alone does not implement an approval workflow.
 
 ### Structured rich text
 

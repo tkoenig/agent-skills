@@ -53,7 +53,9 @@ Use `draft --permalink=...` for thread replies and `--message-file=/absolute/pat
 ## Formatting and attachments
 
 - **Drafts:** SlackCLI converts Slack markup to rich text (bold, lists, links, inline code). No custom Block Kit layouts or file attachments through its draft command. `--message-file` reads message text; it does not attach a file.
-- **Sending:** `--blocks='JSON'` or `--blocks=@/absolute/path.json` supports Block Kit layouts; `--file=/absolute/path` attaches a file. SlackCLI does not allow `--blocks` and `--file` together. Include `--message` as notification/accessibility fallback with blocks.
+- **Approved text-only sends:** default to a `markdown` block containing standard Markdown. This preserves headings, lists, links and fenced code without converting them to Slack `mrkdwn`. Include meaningful `--message` text for notifications/accessibility. Use a JSON serializer for dynamic content.
+- **Attachments:** `--file=/absolute/path` cannot be combined with `--blocks` in SlackCLI. Use normal Slack `mrkdwn` for the accompanying message. Drafts remain rich text from Slack markup, not custom Markdown blocks.
+- Use other Block Kit layouts only when they add value or the user requests them. Never silently change content or resend after a block rejection.
 - Prefer simple formatting for everyday messages. For richer layouts, load [references/block-kit.md](references/block-kit.md): examples, Markdown/rich text, tables, media, app-only interactions and sourced limits. Recheck the linked official docs for new features or compatibility errors.
 - `attached_draft_exists` means the destination already has a draft. Ask the user to discard it before recreating; do not delete it automatically.
 
@@ -65,7 +67,13 @@ Show the proposed message and identify the workspace, recipient, thread and atta
 {baseDir}/scripts/slack-assistant send-approved --recipient-id=U123 --message='Approved text' --file='/absolute/path/screenshot.png' --json
 ```
 
-Omit `--file` when there is no attachment. `send-approved` is an explicit workflow marker, not a technical proof of consent: only use it after the user approves. Normal `messages send` stays blocked. Other mutations remain blocked too. Report success only after the CLI confirms it; if delivery is uncertain, inspect the destination before retrying to avoid duplicates.
+For text-only sends, use a Markdown block instead:
+
+```bash
+{baseDir}/scripts/slack-assistant send-approved --recipient-id=U123 --message='Approved summary for notifications and accessibility.' --blocks='[{"type":"markdown","text":"## Update\n\nApproved message."}]' --json
+```
+
+The block and fallback must represent the same approved content; the example text above is only a placeholder. `send-approved` is an explicit workflow marker, not a technical proof of consent: only use it after the user approves. Normal `messages send` stays blocked. Other mutations remain blocked too. Report success only after the CLI confirms it; if delivery is uncertain, inspect the destination before retrying to avoid duplicates.
 
 ## Setup and reauthentication
 
