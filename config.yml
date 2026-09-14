@@ -21,6 +21,7 @@ global_prompts:
   - commit
   - dependabot
   - pr-review
+  - pr-review-parallel
   - recent-changes
   - simplify
   - wait-what

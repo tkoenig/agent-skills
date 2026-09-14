@@ -110,6 +110,9 @@ Review all open Dependabot PRs, research upstream dependency changes, and recomm
 ### pr-review
 Structured PR review with issue analysis and code quality checks.
 
+### pr-review-parallel
+PR investigation followed by three independent parallel reviews: correctness, tests, and maintainability. Evidence-backed synthesis; review-only.
+
 ### recent-changes
 Show recent git commits by other team members since your last work session.
 
