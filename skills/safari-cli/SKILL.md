@@ -72,7 +72,9 @@ Safari tools must share one browser session for tabs, console logs, and network 
 
 Run `list --schema` before calling an unfamiliar tool to verify its parameters.
 
-MCP screenshots capture the page as PNG and do not require Peekaboo. Prefer `page_interactions` to perform a deliberate sequence of clicks, typing, scrolling, hovering, and key presses; wait for navigation when an interaction should load a new page.
+MCP screenshots capture the page as PNG and do not require Peekaboo. Before capturing after navigation, viewport changes, or scrolling, wait 1 second to let rendering settle; if the saved PNG is blank, wait another second and retry once. This is a pragmatic workaround for intermittent blank captures, not a verified fix.
+
+Prefer `page_interactions` to perform a deliberate sequence of clicks, typing, scrolling, hovering, and key presses; wait for navigation when an interaction should load a new page.
 
 ## AppleScript fallback setup
 
