@@ -1,6 +1,6 @@
 # Agent Skills
 
-Custom skills, prompts, and extensions for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent).
+Custom skills, prompts, subagents, and extensions for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent).
 
 ## Installation
 
@@ -45,6 +45,32 @@ ln -s ~/Development/tkoenig/agent-skills/prompts/commit.md .pi/prompts/commit.md
 
 # Extensions
 ln -s ~/Development/tkoenig/agent-skills/extensions/infra-guard .pi/extensions/infra-guard
+```
+
+## Subagents
+
+### historian
+Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-5.6 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
+
+Requires the `pi-subagents` package and access to `openai-codex/gpt-5.6-sol`. The agent is read-only by instruction, not a filesystem sandbox.
+
+Subagents are installed separately from `./bin/sync`. From this repository, link the agent globally (the destination must not already exist):
+
+```bash
+mkdir -p ~/.pi/agent/agents
+ln -s "$PWD/agents/historian.md" ~/.pi/agent/agents/historian.md
+```
+
+The search helper is available at `skills/pi-session-query/tools/session-search`; the agent expects that skill at `~/.pi/agent/skills/pi-session-query`. If it is not linked already, link it with:
+
+```bash
+ln -s "$PWD/skills/pi-session-query" ~/.pi/agent/skills/pi-session-query
+```
+
+If the helper is unavailable, the agent can fall back to read-only session discovery with `rg` and `find`.
+
+```text
+/run historian "Why did we choose fnox in the dotfiles setup?"
 ```
 
 ## Skills
