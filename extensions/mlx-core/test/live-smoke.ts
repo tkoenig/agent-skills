@@ -45,6 +45,10 @@ try {
   }] });
   assert.ok(followup.content.some(c => c.type === "text" && c.text.includes("42")));
   console.log("PASS parsed tool call + tool-result round trip");
+  const coding = await call({ messages: [{ role: "user", content: "Write a short Python function add(a, b) that returns their sum. Include one assert example. Return the code in your final answer.", timestamp: Date.now() }] }, { reasoning: "high", maxTokens: 1024 });
+  assert.equal(coding.stopReason, "stop", "high thinking must finish its visible answer");
+  assert.ok(coding.content.some(c => c.type === "text" && c.text.includes("def add")));
+  console.log("PASS high-thinking coding response with answer reserve");
   const controller = new AbortController();
   const pending = call({ messages: [{ role: "user", content: "Write a long story about a garden.", timestamp: Date.now() }] }, { maxTokens: 2048, signal: controller.signal });
   const timer = setTimeout(() => controller.abort(), 1000);

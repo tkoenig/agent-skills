@@ -49,6 +49,30 @@ ln -s ~/Development/tkoenig/agent-skills/extensions/infra-guard .pi/extensions/i
 
 ## Subagents
 
+### privacy-auditor
+Local-only credential and privacy review with `mlx-core/mlx-community/Qwen3.8-27B-4bit`.
+Uses fresh context, only `read`, `grep`, `find`, and `ls`, and explicitly loads the
+MLX extension rather than ambient extensions. Returns redacted findings, not values.
+Requires `mlx-core` and its downloaded Qwen model. As with `historian`, agents are
+linked separately from `bin/sync` (destination must not already exist):
+
+```sh
+mkdir -p ~/.pi/agent/agents
+ln -s "$PWD/agents/privacy-auditor.md" ~/.pi/agent/agents/privacy-auditor.md
+```
+
+```text
+/run privacy-auditor "Review only /absolute/path/to/config.json for values that should not be committed. Report locations and categories, never values."
+```
+
+Keep launches on the configured local model with fresh context; do not override
+the model to a cloud provider or fork a sensitive session. These defaults are not
+a security sandbox: runtime/settings overrides can change them, local transcripts
+retain tool results, and the parent receives the child's answer. Do not inspect
+raw child transcripts with a cloud model. Redaction instructions are not a hard
+output filter; use human review or a deterministic redaction step for strict
+confidentiality. No sensitive-file audit is run during installation.
+
 ### historian
 Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-5.6 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
 

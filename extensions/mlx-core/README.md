@@ -7,7 +7,7 @@ for the exact revision, reused components, and intentional differences.
 ## Requirements
 
 - macOS / Apple Silicon, `/usr/bin/trash`, Node 22.18+ for tests.
-- MLX Core / `mlx-serve` already installed (26.9.1 or later; app renamed MLX-Serve in 26.9.6).
+- MLX Core / `mlx-serve` already installed (26.9.6 recommended and tested for thinking-budget enforcement; app renamed MLX-Serve in 26.9.6).
 - Pi 0.87.1 (`@earendil-works` packages).
 - A completed Qwen 3.5-family MLX download in `~/.mlx-serve/models`.
   Qwen3.8-27B uses that architecture and is the initial target.
@@ -60,12 +60,29 @@ running and aren't advertised yet, release all users and start it again.
 {
   "binary": "/opt/homebrew/bin/mlx-serve",
   "modelDir": "/Users/YOU/.mlx-serve/models",
-  "contextTokens": 32768,
+  "contextTokens": 65536,
+  "maxTokens": 32768,
+  "answerReserveTokens": 8192,
   "readyTimeoutMs": 120000
 }
 ```
 
-Omit the file to use defaults. `PI_MLX_CORE_DIR` isolates lifecycle/config state
+Omit the file to use defaults: 65,536-token context, 32,768-token output cap
+(thinking and answer combined), and up to 8,192 tokens reserved for the answer.
+High/xhigh thinking receives the remaining budget (24,576 tokens at defaults),
+while low/medium keep their 2,048/8,192 budgets. The server's explicit
+`reasoning_budget_tokens` closes the thinking block at the cap; it does not merely
+hide reasoning. Smaller per-request output caps scale the answer reserve down
+to at most a quarter of that cap. Long answers can still hit the output limit.
+
+Pi receives these same model limits: its footer shows approximately `66k` context,
+and `pi --list-models mlx-core` shows context and max output. Output is also capped
+at half a model's supported context. For larger coding sessions, e.g. set context
+to 131072 and output to 65536; allow extra RAM and latency. After changing context,
+release MLX in all Pi users (`/mlx stop` or quit), then `/reload` and reselect the
+model. A live server with old context settings is deliberately not force-restarted.
+
+`PI_MLX_CORE_DIR` isolates lifecycle/config state
 for tests. Binary and model-directory paths must be absolute. Context is bounded
 by both this cap and the model configuration. Initial scope is text/tools, with
 at most one resident model and vision disabled. Memory still depends on context
@@ -105,7 +122,8 @@ server: shared startup, one-client exit, crashed-client cleanup, stale lock/stat
 foreign-server preservation, configuration conflict, and pre-start cancellation.
 Catalog tests reject incomplete downloads, remote IDs, and non-chat architectures.
 Live smoke checks streaming text/Unicode/usage, parsed tool calls and tool-result
-round trips, and in-flight cancellation. It uses Pi's provider implementation
+round trips, high-thinking coding completion with answer space reserved, and
+in-flight cancellation. It uses Pi's provider implementation
 but does not launch an agent or read user credential/config files.
 
 Not yet covered: vision (disabled), exhaustive backend error/context-overflow

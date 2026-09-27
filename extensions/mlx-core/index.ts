@@ -1,5 +1,5 @@
 // Provider/lazy-stream pattern adapted from Armin Ronacher's pi-ds4 (MIT).
-import { createProvider, lazyStream, type Model, type ProviderStreams } from "@earendil-works/pi-ai";
+import { createProvider, lazyStream, type Model, type ProviderStreams, type StreamOptions } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { createLifecycle } from "./lifecycle.ts";
 import { discoverModels, type LocalModel } from "./catalog.ts";
 import { checkUpdates } from "./updates.ts";
+import { applyReasoningBudget } from "./budgets.ts";
 
 const PROVIDER = "mlx-core";
 const PLACEHOLDER_URL = "http://127.0.0.1:1/v1"; // Replaced only after verified managed startup.
@@ -16,16 +17,20 @@ const extensionDir = dirname(fileURLToPath(import.meta.url));
 
 export default async function (pi: ExtensionAPI) {
   const root = process.env.PI_MLX_CORE_DIR ?? join(homedir(), ".pi", "mlx-core");
-  let config: { binary?: string; modelDir?: string; contextTokens?: number; readyTimeoutMs?: number } = {};
+  let config: { binary?: string; modelDir?: string; contextTokens?: number; maxTokens?: number; answerReserveTokens?: number; readyTimeoutMs?: number } = {};
   try { config = JSON.parse(await readFile(join(root, "settings.json"), "utf8")); }
   catch (e: any) { if (e.code !== "ENOENT") throw e; }
   if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("Invalid MLX settings object");
   const binary = config.binary ?? "/opt/homebrew/bin/mlx-serve";
   const modelDir = config.modelDir ?? join(homedir(), ".mlx-serve", "models");
-  const contextTokens = config.contextTokens ?? 32768;
+  const contextTokens = config.contextTokens ?? 65536;
+  const maxTokens = config.maxTokens ?? Math.min(32768, Math.floor(contextTokens / 2));
+  const answerReserveTokens = config.answerReserveTokens ?? Math.min(8192, Math.floor(maxTokens / 4));
   const readyTimeoutMs = config.readyTimeoutMs ?? 120000;
   if (!isAbsolute(binary) || !isAbsolute(modelDir)) throw new Error("MLX binary and modelDir must be absolute paths");
   if (!Number.isInteger(contextTokens) || contextTokens < 4096 || contextTokens > 262144) throw new Error("MLX contextTokens must be 4096..262144");
+  if (!Number.isInteger(maxTokens) || maxTokens < 1024 || maxTokens >= contextTokens) throw new Error("MLX maxTokens must be at least 1024 and less than contextTokens");
+  if (!Number.isInteger(answerReserveTokens) || answerReserveTokens < 1 || answerReserveTokens >= maxTokens) throw new Error("MLX answerReserveTokens must be positive and less than maxTokens");
   if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1000 || readyTimeoutMs > 900000) throw new Error("Invalid MLX readyTimeoutMs");
   const lifecycle = createLifecycle({ root, binary, modelDir, contextTokens, readyTimeoutMs, watchdog: join(extensionDir, "mlx-watchdog.sh") });
   let installed = await discoverModels(modelDir, contextTokens);
@@ -34,7 +39,7 @@ export default async function (pi: ExtensionAPI) {
     return { id: entry.id, name: `${entry.id.split("/").at(-1)} (local MLX)`,
       api: "openai-completions", provider: PROVIDER, baseUrl: PLACEHOLDER_URL,
       reasoning: entry.reasoning, input: ["text"], contextWindow: entry.contextWindow,
-      maxTokens: Math.min(8192, entry.contextWindow), cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      maxTokens: Math.min(maxTokens, Math.floor(entry.contextWindow / 2)), cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       compat: { supportsStore: false, supportsDeveloperRole: false, maxTokensField: "max_tokens",
         supportsStrictMode: false, supportsUsageInStreaming: true, supportsReasoningEffort: true,
         thinkingFormat: "qwen" },
@@ -52,9 +57,17 @@ export default async function (pi: ExtensionAPI) {
       if (!catalog.data?.some(entry => entry.id === model.id)) throw new Error(`Managed mlx-serve does not advertise ${model.id}`);
       return run({ ...model, baseUrl: state.apiBaseUrl });
     });
+  // Preserve Pi's request instrumentation; apply the reserve to the final payload
+  // after an existing onPayload hook has had its opportunity to replace it.
+  function budgeted<T extends StreamOptions>(options: T | undefined): T & StreamOptions {
+    return { ...options, onPayload: async (payload, model) => {
+      const replacement = await options?.onPayload?.(payload, model);
+      return applyReasoningBudget(replacement ?? payload, answerReserveTokens);
+    } } as T & StreamOptions;
+  }
   const api: ProviderStreams = {
-    stream: (model, context, options) => prepare(model, options?.signal, local => upstream.stream(local, context, options)),
-    streamSimple: (model, context, options) => prepare(model, options?.signal, local => upstream.streamSimple(local, context, options)),
+    stream: (model, context, options) => prepare(model, options?.signal, local => upstream.stream(local, context, budgeted(options))),
+    streamSimple: (model, context, options) => prepare(model, options?.signal, local => upstream.streamSimple(local, context, budgeted(options))),
   };
   function register() {
     const provider = createProvider({ id: PROVIDER, name: "MLX Core (this Mac)", baseUrl: PLACEHOLDER_URL,
