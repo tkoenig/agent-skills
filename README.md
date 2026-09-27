@@ -150,6 +150,13 @@ Re-pitch the previous response with brief context and concise Simplified Technic
 
 ## Extensions
 
+### mlx-core
+Local MLX Core / `mlx-serve` provider, adapting Armin Ronacher's `pi-ds4`
+lease, watchdog, and lazy-start approach. Shares downloaded Qwen MLX weights
+with the app but owns a separate loopback server. Enabled through `global_extensions`.
+See [`extensions/mlx-core/README.md`](extensions/mlx-core/README.md) for usage,
+provenance, limitations, and tests.
+
 ### infra-guard
 Blocks SSH, Ansible, Terraform, rsync, and scp commands to prevent accidental remote server access. These commands should be executed by the user, not the AI agent.
 

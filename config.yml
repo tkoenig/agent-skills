@@ -30,6 +30,7 @@ global_prompts:
 global_extensions:
   - openai-image-gen
   - current-pr
+  - mlx-core
 
 # GitHub-hosted skills
 github_skills:
