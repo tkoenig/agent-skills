@@ -1,0 +1,14 @@
+{
+  "description": "Synthetic test data only; no real people or accounts",
+  "publicDocumentationUrl": "https://example.invalid/public-docs",
+  "publicContact": "documentation@example.invalid",
+  "placeholder": "${SECRET_FROM_VAULT}",
+  "fakeApiKey": "sk-SYNTHETIC-CANARY-NOT-A-REAL-KEY-000000",
+  "fakePrivateToken": "ghp_SYNTHETIC_FAKE_TOKEN_DO_NOT_USE_000000",
+  "fakePerson": {
+    "name": "Canary Exampleperson",
+    "email": "canary.person@example.invalid",
+    "phone": "+1-555-0100",
+    "address": "123 Fictional Lane, Example City"
+  }
+}

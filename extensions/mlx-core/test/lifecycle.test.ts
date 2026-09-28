@@ -1,14 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fork, spawn, type ChildProcess } from "node:child_process";
+import { fork, spawn, execFile, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdtemp, writeFile, readFile, mkdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { createLifecycle, trash } from "../lifecycle.ts";
+import { createLifecycle, readJson, trash } from "../lifecycle.ts";
 import { discoverModels } from "../catalog.ts";
+import { readLogTail } from "../log-viewer.ts";
 const watchdog = fileURLToPath(new URL("../mlx-watchdog.sh", import.meta.url));
+const exec = promisify(execFile);
 const fixture = `#!/usr/bin/env node
 const http = require('node:http');
 const args = process.argv; const port = Number(args[args.indexOf('--port')+1]);
@@ -23,6 +26,19 @@ async function until(check: () => Promise<boolean> | boolean, timeout = 15000) {
     if (Date.now() - start > timeout) throw new Error("Test condition timed out");
     await new Promise(r => setTimeout(r, 100));
   }
+}
+async function settleIsolated(root: string, pid?: number) {
+  // Only terminate PIDs obtained from the fresh test root's own ensure() call.
+  // Leave state intact until the fake server and watchdog have both exited.
+  if (pid && alive(pid)) process.kill(pid, "SIGTERM");
+  if (pid) await until(() => !alive(pid));
+  const watchdogState = await readJson<{ pid: number }>(join(root, "state", "watchdog.json"));
+  if (watchdogState?.pid) await until(() => !alive(watchdogState.pid));
+  // watchdog.json is removed just before shell exit; also wait for the actual
+  // test-root invocation to disappear rather than trusting that record alone.
+  await until(async () => !(await exec("ps", ["axww", "-o", "args="])).stdout
+    .split("\n").some(args => args.includes(`${watchdog} ${join(root, "state")}`)));
+  await trash(root);
 }
 async function send(child: ChildProcess, command: string): Promise<any> {
   const result = once(child, "message"); child.send!(command);
@@ -57,9 +73,8 @@ test("two real clients share server, graceful exit preserves other client, crash
     await until(() => !alive(serverPid!));
     await until(async () => !(await readdir(options.root)).includes("watchdog.json"));
   } finally {
-    for (const child of children) if (child.exitCode === null) child.kill();
-    if (serverPid && alive(serverPid)) process.kill(serverPid, "SIGTERM");
-    await trash(root);
+    for (const child of children) if (child.exitCode === null) { const exited = once(child, "exit"); child.kill(); await exited; }
+    await settleIsolated(root, serverPid);
   }
 });
 
@@ -89,9 +104,8 @@ test("foreign server is not adopted or killed; stale state/lock recovery and can
     await manager.dispose("quit");
   } finally {
     await manager.dispose("quit");
-    if (serverPid && alive(serverPid)) process.kill(serverPid, "SIGTERM");
     const exited = once(foreign, "exit"); foreign.kill(); await exited;
-    await trash(root);
+    await settleIsolated(root, serverPid);
   }
 });
 
@@ -113,22 +127,144 @@ test("reload handoff keeps the same server and quit releases the replacement lea
     await until(() => !alive(pid!));
   } finally {
     await old.dispose("quit"); await fresh.dispose("quit");
-    if (pid && alive(pid)) process.kill(pid, "SIGTERM");
-    await trash(root);
+    await settleIsolated(root, pid);
   }
+});
+
+test("last lease release and new client race never leaves a dead endpoint", { timeout: 20000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-race-"));
+  const binary = join(root, "mlx-serve");
+  await writeFile(binary, fixture, { mode: 0o755 });
+  const options = { root: join(root, "state"), binary, modelDir: join(root, "models"), watchdog, contextTokens: 32768, readyTimeoutMs: 5000 };
+  const first = createLifecycle(options);
+  const next = fork(fileURLToPath(new URL("./client.ts", import.meta.url)), [], {
+    env: { ...process.env, MLX_TEST_OPTIONS: JSON.stringify(options) }, stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  let pid: number | undefined;
+  try {
+    await once(next, "message");
+    pid = (await first.ensure()).pid;
+    const [, response] = await Promise.all([first.release(), send(next, "ensure")]);
+    assert.equal((await send(next, "ensure")).state.pid, response.state.pid);
+    assert.ok((await createLifecycle(options).status()).healthy);
+    const exited = once(next, "exit"); await send(next, "quit"); await exited;
+    await until(() => !alive(response.state.pid));
+  } finally {
+    if (next.exitCode === null) { const exited = once(next, "exit"); next.kill(); await exited; }
+    await first.dispose("quit");
+    await settleIsolated(root, pid);
+  }
+});
+
+test("spawn failure and readiness timeout report errors without adopting stale state", { timeout: 20000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-failure-"));
+  const binary = join(root, "mlx-serve");
+  const options = { root: join(root, "state"), binary, modelDir: join(root, "models"), watchdog, contextTokens: 32768, readyTimeoutMs: 1000 };
+  const manager = createLifecycle(options);
+  let pid: number | undefined;
+  try {
+    await assert.rejects(manager.ensure(), /ENOENT/);
+    await writeFile(binary, fixture.replace("server.listen(port, '127.0.0.1');", "setInterval(() => {}, 1000);"), { mode: 0o755 });
+    await assert.rejects(manager.ensure(), /Timed out waiting/);
+    const status = await manager.status();
+    pid = status.state?.pid;
+    assert.equal(status.healthy, false);
+    assert.equal(await readFile(join(options.root, "server.json"), "utf8").then(JSON.parse).then(s => s.pid), pid);
+  } finally {
+    await manager.dispose("quit");
+    await settleIsolated(root, pid);
+  }
+});
+
+test("status checks identity and HTTP readiness, without starting a server", { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-status-"));
+  const binary = join(root, "mlx-serve");
+  await writeFile(binary, fixture, { mode: 0o755 });
+  const options = { root: join(root, "state"), binary, modelDir: join(root, "models"), watchdog, contextTokens: 32768, readyTimeoutMs: 5000 };
+  const manager = createLifecycle(options);
+  let pid: number | undefined;
+  try {
+    assert.deepEqual(await manager.status(), { state: undefined, healthy: false });
+    const state = await manager.ensure(); pid = state.pid;
+    assert.equal((await manager.status()).healthy, true);
+    await writeFile(join(options.root, "server.json"), JSON.stringify({ ...state, processStart: "wrong" }));
+    assert.equal((await manager.status()).healthy, false);
+  } finally {
+    await manager.dispose("quit");
+    await settleIsolated(root, pid);
+  }
+});
+
+test("one caller cancellation does not cancel another caller's readiness wait", { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-abort-"));
+  const binary = join(root, "mlx-serve");
+  await writeFile(binary, fixture.replace("server.listen(port, '127.0.0.1');", "setTimeout(() => server.listen(port, '127.0.0.1'), 1200);"), { mode: 0o755 });
+  const manager = createLifecycle({ root: join(root, "state"), binary, modelDir: join(root, "models"), watchdog, contextTokens: 32768, readyTimeoutMs: 5000 });
+  const controller = new AbortController();
+  const firstMessages: string[] = [];
+  const nextMessages: string[] = [];
+  let pid: number | undefined;
+  try {
+    const cancelled = manager.ensure(controller.signal, message => firstMessages.push(message));
+    const retained = manager.ensure(undefined, message => nextMessages.push(message));
+    controller.abort();
+    await assert.rejects(cancelled);
+    const firstAtAbort = firstMessages.length;
+    pid = (await retained).pid;
+    assert.equal(firstMessages.length, firstAtAbort, "cancelled request must not receive late readiness");
+    assert.ok(nextMessages.some(message => message.includes("starting")), "remaining caller receives readiness progress");
+    assert.equal((await manager.status()).healthy, true);
+  } finally {
+    await manager.dispose("quit");
+    await settleIsolated(root, pid);
+  }
+});
+
+test("shutdown cancels a pending readiness wait", { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-shutdown-"));
+  const binary = join(root, "mlx-serve");
+  await writeFile(binary, fixture.replace("server.listen(port, '127.0.0.1');", "setInterval(() => {}, 1000);"), { mode: 0o755 });
+  const options = { root: join(root, "state"), binary, modelDir: join(root, "models"), watchdog, contextTokens: 32768, readyTimeoutMs: 10000 };
+  const manager = createLifecycle(options);
+  let pid: number | undefined;
+  try {
+    const pending = manager.ensure();
+    const rejected = assert.rejects(pending, /cancelled/);
+    await until(async () => !!(await manager.status()).state);
+    pid = (await manager.status()).state?.pid;
+    await manager.dispose("quit");
+    await rejected;
+  } finally {
+    await manager.dispose("quit");
+    await settleIsolated(root, pid);
+  }
+});
+
+test("log tail is bounded and missing logs stay local", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-mlx-log-"));
+  try {
+    const path = join(root, "log");
+    assert.match((await readLogTail(path))[0], /No log yet/);
+    await writeFile(path, "not retained\n".repeat(30000) + "last synthetic line\n");
+    const lines = await readLogTail(path);
+    assert.ok(lines.length <= 2000);
+    assert.ok(lines.some(line => line.includes("last synthetic line")));
+    assert.ok(lines.length < 30000);
+  } finally { await trash(root); }
 });
 
 test("catalog ignores incomplete weights, remote ids, and non-chat models", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-mlx-catalog-"));
   try {
-    for (const [name, type, complete] of [["good", "qwen3_5", true], ["partial", "qwen3_5", false], ["bad@peer", "qwen3_5", true], ["embedding", "bert", true]] as const) {
+    for (const [name, type, complete] of [["good", "qwen3_5", true], ["partial", "qwen3_5", false], ["bad@peer", "qwen3_5", true], ["embedding", "bert", true], ["llama", "llama", true], ["media", "AudioVideo", true], ["no-template", "mistral", true]] as const) {
       const dir = join(root, "org", name); await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "config.json"), JSON.stringify({ model_type: type, text_config: { max_position_embeddings: 262144 } }));
-      await writeFile(join(dir, "chat_template.jinja"), "enable_thinking");
+      if (name !== "no-template") await writeFile(join(dir, "chat_template.jinja"), "enable_thinking");
       if (complete) await writeFile(join(dir, "model.safetensors"), "fixture");
     }
     const found = await discoverModels(root, 32768);
-    assert.deepEqual(found.map(m => m.id), ["org/good"]);
+    assert.deepEqual(found.map(m => m.id), ["org/good", "org/llama"]);
+    assert.equal(found[1].reasoning, false);
     assert.equal(found[0].contextWindow, 32768); assert.equal(found[0].reasoning, true);
   } finally { await trash(root); }
 });

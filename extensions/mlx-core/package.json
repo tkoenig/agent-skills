@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "pi": { "extensions": ["./index.ts"] },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
@@ -16,6 +20,7 @@
   "devDependencies": {
     "@earendil-works/pi-ai": "0.87.1",
     "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.3"
   }

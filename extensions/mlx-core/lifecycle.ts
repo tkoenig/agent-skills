@@ -62,6 +62,8 @@ export function createLifecycle(options: LifecycleOptions) {
   let ownProcessStart: string | undefined;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let startupPromise: Promise<ServerState> | undefined;
+  const startupStatuses = new Set<(message: string) => void>();
+  const notifyStartup = (message: string) => { if (!disposed) for (const status of startupStatuses) status(message); };
   let disposed = false;
 
   async function writeJsonAtomic(file: string, value: unknown) {
@@ -217,25 +219,31 @@ export function createLifecycle(options: LifecycleOptions) {
     await writeJsonAtomic(stateFile, state);
     return state;
   }
-  async function waitForServerReady(state: ServerState): Promise<void> {
+  async function health(state: ServerState): Promise<boolean> {
+    if (state.stopping || !await isManaged(state)) return false;
+    try {
+      const response = await fetch(`${state.apiBaseUrl}/models`, { signal: AbortSignal.timeout(2000), redirect: "error" });
+      return response.ok;
+    } catch { return false; }
+  }
+  async function waitForServerReady(state: ServerState, onStatus?: (message: string) => void): Promise<void> {
     const started = Date.now();
     while (Date.now() - started < options.readyTimeoutMs) {
       if (disposed) throw new Error("MLX startup cancelled");
       if (!await isManaged(state)) throw new Error(`mlx-serve exited before readiness; see ${logFile}`);
-      try {
-        const response = await fetch(`${state.apiBaseUrl}/models`, { signal: AbortSignal.timeout(2000), redirect: "error" });
-        if (response.ok) return;
-      } catch {}
+      if (await health(state)) return;
+      onStatus?.(`mlx-serve starting (${Math.round((Date.now() - started) / 1000)}s)`);
       await sleep(500);
     }
     throw new Error(`Timed out waiting for mlx-serve; see ${logFile}`);
   }
-  async function ensureInner(): Promise<ServerState> {
+  async function ensureInner(onStatus?: (message: string) => void): Promise<ServerState> {
     let state: ServerState | undefined;
     while (!state) {
       if (disposed) throw new Error("MLX startup cancelled");
       state = await withLock(async () => {
         await activateLease();
+        if (disposed) throw new Error("MLX startup cancelled");
         const existing = await readJson<ServerState>(stateFile);
         if (await isManaged(existing)) {
           if (existing!.stopping) return undefined;
@@ -245,23 +253,39 @@ export function createLifecycle(options: LifecycleOptions) {
           return existing;
         }
         if (existing) await trash(stateFile);
+        if (disposed) throw new Error("MLX startup cancelled");
         return startServerLocked();
       });
-      if (!state) await sleep(500);
+      if (!state) { onStatus?.("Waiting for previous mlx-serve shutdown"); await sleep(500); }
     }
-    await waitForServerReady(state);
+    await waitForServerReady(state, onStatus);
     return state;
   }
-  async function ensure(signal?: AbortSignal): Promise<ServerState> {
+  async function ensure(signal?: AbortSignal, onStatus?: (message: string) => void): Promise<ServerState> {
     signal?.throwIfAborted();
     if (disposed) throw new Error("MLX lifecycle disposed");
-    startupPromise ??= ensureInner().finally(() => { startupPromise = undefined; });
-    if (!signal) return startupPromise;
+    if (onStatus) startupStatuses.add(onStatus);
+    if (!startupPromise) {
+      notifyStartup("Preparing mlx-serve");
+      const pending = ensureInner(notifyStartup);
+      const shared = pending.finally(() => { if (startupPromise === shared) startupPromise = undefined; });
+      startupPromise = shared;
+    }
+    const pending = startupPromise;
+    const cleanup = () => { if (onStatus) startupStatuses.delete(onStatus); };
+    if (!signal) return pending.finally(cleanup);
     // Cancelling one caller must not abort startup needed by another caller.
     return new Promise((resolve, reject) => {
-      const abort = () => reject(signal.reason ?? new Error("MLX request aborted"));
+      let settled = false;
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(signal.reason ?? new Error("MLX request aborted"));
+      };
       signal.addEventListener("abort", abort, { once: true });
-      startupPromise!.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+      pending.then(value => { if (!settled) resolve(value); }, error => { if (!settled) reject(error); })
+        .finally(() => { settled = true; cleanup(); signal.removeEventListener("abort", abort); });
       if (signal.aborted) abort();
     });
   }
@@ -277,9 +301,14 @@ export function createLifecycle(options: LifecycleOptions) {
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = undefined;
     disposed = true;
-    if (startupPromise) await startupPromise.catch(() => {});
+    startupStatuses.clear();
+    if (startupPromise) await Promise.race([startupPromise.catch(() => {}), sleep(5_000)]);
     // /reload/session replacement retains a brief lease for the new instance.
     if (reason === "quit") await trash(leaseFile);
   }
-  return { ensure, release, dispose, state: () => readJson<ServerState>(stateFile), logFile };
+  async function status(): Promise<{ state?: ServerState; healthy: boolean }> {
+    const state = await readJson<ServerState>(stateFile);
+    return { state, healthy: !!state && await health(state) };
+  }
+  return { ensure, release, dispose, status, logFile };
 }

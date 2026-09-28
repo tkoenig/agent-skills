@@ -10,6 +10,8 @@ import { createLifecycle } from "./lifecycle.ts";
 import { discoverModels, type LocalModel } from "./catalog.ts";
 import { checkUpdates } from "./updates.ts";
 import { applyReasoningBudget } from "./budgets.ts";
+import { showLogs } from "./log-viewer.ts";
+import { requestWorkingStatus } from "./working-status.ts";
 
 const PROVIDER = "mlx-core";
 const PLACEHOLDER_URL = "http://127.0.0.1:1/v1"; // Replaced only after verified managed startup.
@@ -34,6 +36,9 @@ export default async function (pi: ExtensionAPI) {
   if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1000 || readyTimeoutMs > 900000) throw new Error("Invalid MLX readyTimeoutMs");
   const lifecycle = createLifecycle({ root, binary, modelDir, contextTokens, readyTimeoutMs, watchdog: join(extensionDir, "mlx-watchdog.sh") });
   let installed = await discoverModels(modelDir, contextTokens);
+  let workingStatus: ((message?: string) => void) | undefined;
+  let disposed = false;
+  let currentRequest: object | undefined;
 
   function asModel(entry: LocalModel): Model<"openai-completions"> {
     return { id: entry.id, name: `${entry.id.split("/").at(-1)} (local MLX)`,
@@ -46,17 +51,26 @@ export default async function (pi: ExtensionAPI) {
     };
   }
   const upstream = openAICompletionsApi();
-  const prepare = (model: Model<any>, signal: AbortSignal | undefined, run: (model: Model<any>) => ReturnType<ProviderStreams["stream"]>) =>
-    lazyStream(model, async () => {
-      if (!installed.some(entry => entry.id === model.id) || model.id.includes("@")) throw new Error("MLX model is not installed locally; run /mlx refresh");
-      const state = await lifecycle.ensure(signal);
-      signal?.throwIfAborted();
-      const response = await fetch(`${state.apiBaseUrl}/models`, { redirect: "error", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error("Cannot query the managed MLX model catalog");
-      const catalog = await response.json() as { data?: { id: string }[] };
-      if (!catalog.data?.some(entry => entry.id === model.id)) throw new Error(`Managed mlx-serve does not advertise ${model.id}`);
-      return run({ ...model, baseUrl: state.apiBaseUrl });
+  const prepare = (model: Model<any>, signal: AbortSignal | undefined, run: (model: Model<any>) => ReturnType<ProviderStreams["stream"]>) => {
+    const turnStatus = workingStatus;
+    const request = {};
+    currentRequest = request;
+    const status = requestWorkingStatus(message => turnStatus?.(message), signal,
+      () => !disposed && workingStatus === turnStatus && currentRequest === request);
+    return lazyStream(model, async () => {
+      try {
+        if (!installed.some(entry => entry.id === model.id) || model.id.includes("@")) throw new Error("MLX model is not installed locally; run /mlx refresh");
+        const state = await lifecycle.ensure(signal, status.report);
+        signal?.throwIfAborted();
+        status.report("Server ready; waiting for model response");
+        const response = await fetch(`${state.apiBaseUrl}/models`, { redirect: "error", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error("Cannot query the managed MLX model catalog");
+        const catalog = await response.json() as { data?: { id: string }[] };
+        if (!catalog.data?.some(entry => entry.id === model.id)) throw new Error(`Managed mlx-serve does not advertise ${model.id}`);
+        return status.follow(run({ ...model, baseUrl: state.apiBaseUrl }));
+      } catch (error) { status.finish(); throw error; }
     });
+  };
   // Preserve Pi's request instrumentation; apply the reserve to the final payload
   // after an existing onPayload hook has had its opportunity to replace it.
   function budgeted<T extends StreamOptions>(options: T | undefined): T & StreamOptions {
@@ -90,8 +104,12 @@ export default async function (pi: ExtensionAPI) {
       if (!action) action = "status";
       switch (action) {
         case "start": {
-          const state = await lifecycle.ensure();
-          ctx.ui.notify(`Managed mlx-serve: ${state.apiBaseUrl}`, "info"); break;
+          ctx.ui.setStatus("mlx", "Preparing mlx-serve");
+          try {
+            const state = await lifecycle.ensure(undefined, message => ctx.ui.setStatus("mlx", message));
+            ctx.ui.notify(`Managed mlx-serve: ${state.apiBaseUrl} (HTTP ready; model loads on request)`, "info");
+          } finally { ctx.ui.setStatus("mlx", undefined); }
+          break;
         }
         case "stop":
           if (!ctx.isIdle()) throw new Error("Wait for the current turn before releasing MLX");
@@ -102,14 +120,29 @@ export default async function (pi: ExtensionAPI) {
           ctx.ui.notify(`Found ${installed.length} supported local model(s).`, "info"); break;
         case "updates":
           ctx.ui.notify(await checkUpdates(binary, { offline: /^(1|true|yes)$/i.test(process.env.PI_OFFLINE ?? "") }), "info"); break;
-        case "logs": ctx.ui.notify(`Lifecycle log: ${lifecycle.logFile}\nServer log: ${join(root, "server.log")}`, "info"); break;
+        case "logs": await showLogs(ctx, [lifecycle.logFile, join(root, "server.log")]); break;
         case "status": {
-          const state = await lifecycle.state();
-          ctx.ui.notify(`${installed.length} local model(s); ${state ? `recorded server PID ${state.pid}${state.stopping ? " (stopping)" : ""} at ${state.apiBaseUrl}` : "no managed server"}`, "info"); break;
+          const { state, healthy } = await lifecycle.status();
+          ctx.ui.notify(`${installed.length} local model(s); ${healthy ? `managed server PID ${state!.pid} healthy at ${state!.apiBaseUrl}` : state ? "recorded server is stale, stopping, or unhealthy" : "no managed server"}`, "info"); break;
         }
         default: throw new Error("Usage: /mlx [status|start|stop|refresh|logs|updates]");
       }
     },
   });
-  pi.on("session_shutdown", async event => { await lifecycle.dispose(event.reason); });
+  pi.on("before_agent_start", (_event, ctx) => {
+    currentRequest = undefined;
+    workingStatus = ctx.model?.provider === PROVIDER ? message => ctx.ui.setWorkingMessage(message) : undefined;
+  });
+  pi.on("agent_settled", (_event, ctx) => {
+    if (workingStatus) ctx.ui.setWorkingMessage();
+    workingStatus = undefined;
+    currentRequest = undefined;
+  });
+  pi.on("session_shutdown", async (event, ctx) => {
+    disposed = true;
+    if (workingStatus) ctx.ui.setWorkingMessage();
+    workingStatus = undefined;
+    currentRequest = undefined;
+    await lifecycle.dispose(event.reason);
+  });
 }

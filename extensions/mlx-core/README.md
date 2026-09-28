@@ -9,8 +9,8 @@ for the exact revision, reused components, and intentional differences.
 - macOS / Apple Silicon, `/usr/bin/trash`, Node 22.18+ for tests.
 - MLX Core / `mlx-serve` already installed (26.9.6 recommended and tested for thinking-budget enforcement; app renamed MLX-Serve in 26.9.6).
 - Pi 0.87.1 (`@earendil-works` packages).
-- A completed Qwen 3.5-family MLX download in `~/.mlx-serve/models`.
-  Qwen3.8-27B uses that architecture and is the initial target.
+- A completed supported chat MLX download in `~/.mlx-serve/models`.
+  Qwen3.8-27B uses the Qwen 3.5 architecture and is the tested target.
 
 No runtime/model downloads, upgrades, or MLX Core app settings are changed by
 this extension. Inference stays local; `/mlx updates` explicitly contacts GitHub
@@ -25,7 +25,9 @@ pi -e /absolute/path/to/agent-skills/extensions/mlx-core/index.ts
 Select `mlx-core/mlx-community/Qwen3.8-27B-4bit` with `/model`, then send a
 message. The first request starts a separate managed server on a random
 `127.0.0.1` port. Models load on demand. Merely listing models does not start
-any process or download anything.
+any process or download anything. Startup shows an elapsed server-readiness
+working message, then waits for the first model response; HTTP readiness does
+not imply model weights have loaded.
 
 For permanent activation, explicitly add `mlx-core` to `global_extensions` in
 this repository's `config.yml` and link the extension through the normal
@@ -34,11 +36,12 @@ skill-manager workflow. Do not register it twice as both a package and a symlink
 ## Commands
 
 - `/mlx` — action menu (or status without a UI)
-- `/mlx status` — local catalog count and recorded server state
+- `/mlx status` — local catalog count and identity-checked, HTTP-healthy server state (no startup)
 - `/mlx start` — start/reuse the managed server
 - `/mlx stop` — release **this Pi process's** lease; never force-stop another user
 - `/mlx refresh` — rediscover completed local models
-- `/mlx logs` — paths to lifecycle and server logs (not inserted into model context)
+- `/mlx logs` — bounded, scrolling local lifecycle/server log viewer in the TUI;
+  paths only outside TUI. Logs are never inserted into model context automatically.
 - `/mlx updates` — compare the installed CLI version with GitHub's latest stable
   release. Manual only, no background checks or automatic upgrades. Respects
   `PI_OFFLINE=1`; shows the CLI version, not the separate app bundle version.
@@ -84,8 +87,14 @@ model. A live server with old context settings is deliberately not force-restart
 
 `PI_MLX_CORE_DIR` isolates lifecycle/config state
 for tests. Binary and model-directory paths must be absolute. Context is bounded
-by both this cap and the model configuration. Initial scope is text/tools, with
-at most one resident model and vision disabled. Memory still depends on context
+by both this cap and the model configuration. Supported catalog is a conservative subset of mlx-serve v26.9.6 chat
+architectures: Qwen 3/3.5 (including 3.8 variants with Qwen 3.5 config),
+Llama, Mistral, Gemma 3 text. A complete weight set and chat template are
+required; embeddings, media and unsupported types are not advertised.
+Reasoning is advertised only when a Qwen chat template declares thinking.
+Other architectures are source-supported but not all checkpoints are live-tested;
+models may still be rejected at runtime. Scope is text/tools, with at most one
+resident model and vision disabled. Memory still depends on context
 and the chosen model. Avoid loading the same large model in MLX Core and Pi
 simultaneously: their independent servers have independent RAM allocations.
 
@@ -100,8 +109,10 @@ simultaneously: their independent servers have independent RAM allocations.
 - Lifecycle data stays under `~/.pi/mlx-core`; no changes to `auth.json`.
 - Minimal server logging, no disk prefix-cache option. This is **not a sandbox
   or a no-retention guarantee**: Pi/subagent transcripts and backend diagnostics
-  can persist sensitive text. Use a fresh local-only session and don't later
-  send that history to a cloud provider.
+  can persist sensitive text. Privacy-auditor redaction is instruction-level,
+  not enforced; a synthetic fixture retry must be reviewed before relying on
+  its output, and reference syntax is not proof of secret-manager integration.
+  Use a fresh local-only session and don't later send that history to a cloud provider.
 - Localhost is not per-user authentication: other processes on this Mac may
   reach the endpoint. Treat the local machine as trusted.
 - Runtime metadata cleanup goes to macOS Trash, including lock directories,
@@ -119,7 +130,8 @@ PI_MLX_CORE_DIR="$HOME/.pi/mlx-core-smoke" node test/live-smoke.ts
 
 Automated lifecycle tests use two independent child processes and a fake HTTP
 server: shared startup, one-client exit, crashed-client cleanup, stale lock/state,
-foreign-server preservation, configuration conflict, and pre-start cancellation.
+foreign-server preservation, configuration conflict, spawn failure, readiness
+timeout, stale/unhealthy status, and pre-start cancellation.
 Catalog tests reject incomplete downloads, remote IDs, and non-chat architectures.
 Live smoke checks streaming text/Unicode/usage, parsed tool calls and tool-result
 round trips, high-thinking coding completion with answer space reserved, and
@@ -127,7 +139,7 @@ in-flight cancellation. It uses Pi's provider implementation
 but does not launch an agent or read user credential/config files.
 
 Not yet covered: vision (disabled), exhaustive backend error/context-overflow
-handling, large-context performance, other architectures, hostile local users,
+handling, large-context performance, other architecture live inference, hostile local users,
 and runtime changes beyond the tested mlx-serve releases.
 
 For a Homebrew-managed installation, quit active users before upgrading the CLI

@@ -18,7 +18,13 @@ The MIT license and Armin's copyright notice are preserved in `LICENSE`.
   start-time checks, lease pruning, established-client check, graceful TERM,
   60-second grace, KILL fallback, and shutdown after the last lease.
 - `index.ts`: native `createProvider` + `lazyStream`, filesystem model catalog,
-  delegated Pi API streaming, and `session_shutdown` integration.
+  delegated Pi API streaming, `before_agent_start`/`agent_settled` working-message
+  restoration (at first content/tool/thinking event, error, abort or shutdown),
+  and `session_shutdown` integration. Status callbacks for shared startup are
+  per caller; an aborted caller cannot repaint a newer request.
+- `log-viewer.ts`: adapted bounded tail (256 KiB/2,000 lines), one-second poll,
+  scrolling/following and overlay lifecycle from Armin's `Ds4LogViewer`; two
+  local MLX logs are selectable. Non-TUI modes display paths only.
 
 This is an adaptation, not a byte-for-byte vendor copy. Keep future changes
 narrow and compare lifecycle fixes against upstream before inventing alternatives.
@@ -45,12 +51,22 @@ narrow and compare lifecycle fixes against upstream before inventing alternative
    Cancellation of one request does not cancel shared startup.
 6. Runtime metadata/locks are moved to macOS Trash, per this machine's policy,
    rather than permanently deleted. This makes the implementation macOS-only.
-7. Initial scope: existing Qwen 3.5-family MLX artifacts (including Qwen 3.8),
-   text and tools, no downloads/builds/upgrades, no vision. Inference protocol is
-   OpenAI Chat Completions via Pi's implementation, not copied HTTP code.
+7. Catalog uses a conservative subset of mlx-serve v26.9.6's
+   `src/model_discovery.zig` `supported_model_types`: Qwen 3/3.5 text,
+   Llama, Mistral and Gemma 3 text, requiring weights and a chat template.
+   Reasoning is advertised only for Qwen templates declaring thinking;
+   vision, embeddings and media are excluded. This is not a guarantee that
+   every supported architecture/checkpoint works. Inference remains Pi's
+   OpenAI Chat Completions implementation, not copied HTTP code.
+8. Readiness is only `/models` HTTP health plus managed process identity;
+   it does not establish that weights loaded. The spinner says server starting
+   until HTTP-ready, then waits for a model response, never inferring model
+   load state from `/models`. `/mlx status` checks both identity and health
+   without adopting an app-owned server.
 
 ## Upstream references
 
 - https://github.com/mitsuhiko/pi-ds4/blob/db8806cd52757fbaf957fe56b54700a1094a30b8/index.ts
 - https://github.com/mitsuhiko/pi-ds4/blob/db8806cd52757fbaf957fe56b54700a1094a30b8/ds4-watchdog.sh
-- mlx-serve CLI contract: https://github.com/ddalcu/mlx-serve/blob/v26.9.1/docs/cli.md
+- mlx-serve v26.9.6 architecture discovery: https://github.com/ddalcu/mlx-serve/blob/v26.9.6/src/model_discovery.zig
+- mlx-serve CLI contract: https://github.com/ddalcu/mlx-serve/blob/v26.9.6/docs/cli.md
