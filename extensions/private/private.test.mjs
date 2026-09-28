@@ -1,35 +1,69 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { installPrivateGuards } from "./guards.mjs";
-import { isPrivateModel, MODEL, MODEL_REF, privateArgs, privateEnv, shellQuote } from "./policy.mjs";
+import { resolvePiCli } from "./cli-path.mjs";
+import { installLocalModelGuard } from "./guards.mjs";
+import { isLocalModel, MODEL, privateArgs, shellQuote } from "./policy.mjs";
 
-const model = { provider: "mlx-core", id: MODEL, api: "openai-completions", baseUrl: "http://127.0.0.1:1/v1" };
+function cliFixture(layout = "dist/bundle/cli.js", name = "@earendil-works/pi-coding-agent") {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "private-cli-test-")));
+  const pkg = join(root, "package");
+  const cli = join(pkg, layout);
+  mkdirSync(dirname(cli), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name, type: "module", bin: { pi: layout } }));
+  writeFileSync(cli, "// Test fixture only\n");
+  const link = join(root, "pi");
+  symlinkSync(cli, link);
+  return { root, pkg, cli, link };
+}
 
-test("only the pinned local model and provider endpoint pass", () => {
-  assert.ok(isPrivateModel(model));
-  for (const bad of [undefined, {}, { ...model, provider: "openai" }, { ...model, id: "other" }, { ...model, baseUrl: "https://example.com/v1" }, { ...model, api: "other" }]) {
-    assert.equal(isPrivateModel(bad), false);
+test("CLI discovery handles bundled/unbundled installs and npm bin symlinks", () => {
+  for (const layout of ["dist/cli.js", "dist/bundle/cli.js", "dist/future/layout/cli.js"]) {
+    const f = cliFixture(layout);
+    assert.equal(resolvePiCli(f.link), f.cli);
+    assert.equal(resolvePiCli(f.cli), f.cli);
   }
 });
 
-test("environment is an allowlist and cannot inherit credentials or parent routing", () => {
-  const env = privateEnv("/home/user", "/profile", {
-    OPENAI_API_KEY: "synthetic-test-value", ANTHROPIC_API_KEY: "synthetic-test-value",
-    NODE_OPTIONS: "--import=evil.js", HTTPS_PROXY: "http://example.com", PI_INTERCOM_SESSION_ID: "parent",
-    PI_CODING_AGENT_DIR: "/parent", PI_MLX_CORE_DIR: "/other", TERM: "xterm", TERM_PROGRAM: "ghostty",
-  });
-  assert.deepEqual(Object.keys(env).sort(), ["COLORTERM", "HOME", "LANG", "PATH", "PI_CODING_AGENT_DIR", "PI_OFFLINE", "PI_PRIVATE_PROFILE", "TERM", "TERM_PROGRAM"].sort());
-  assert.equal(env.PI_CODING_AGENT_DIR, "/profile");
-  assert.equal(env.PI_OFFLINE, "1");
+test("CLI discovery refuses unrelated packages, undeclared entry points and relative paths", () => {
+  assert.throws(() => resolvePiCli(cliFixture("dist/cli.js", "unrelated").link), /declared executable/);
+  const f = cliFixture();
+  const other = join(dirname(f.cli), "other.js");
+  writeFileSync(other, "// not the declared bin\n");
+  assert.throws(() => resolvePiCli(other), /declared executable/);
+  assert.throws(() => resolvePiCli("bin/pi"), /absolute/);
 });
 
-test("launch cannot inherit context, tools, sessions, or discovered integrations", () => {
+test("actual launcher preserves working directory, normal agent profile and environment", () => {
+  const f = cliFixture();
+  const agentDir = join(f.root, "agent");
+  mkdirSync(agentDir);
+  writeFileSync(f.cli, `console.log('LAUNCH_PROBE=' + JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd()}));`);
+  const launcher = fileURLToPath(new URL("./launch.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, [launcher, f.link, f.root, agentDir], {
+    env: { HOME: f.root, OPENAI_API_KEY: "synthetic-canary", PATH: "/synthetic/bin:/usr/bin" },
+    encoding: "utf8", timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const line = result.stdout.split("\n").find(line => line.startsWith("LAUNCH_PROBE="));
+  assert.ok(line, "launcher never reached the declared bundled CLI");
+  const probe = JSON.parse(line.slice("LAUNCH_PROBE=".length));
+  assert.equal(probe.cwd, f.root);
+  assert.equal(probe.env.PI_CODING_AGENT_DIR, agentDir);
+  assert.equal(probe.env.OPENAI_API_KEY, "synthetic-canary");
+  assert.equal(probe.env.PATH, "/synthetic/bin:/usr/bin");
+  assert.ok(probe.args.includes(MODEL));
+  assert.ok(!probe.args.some(arg => arg.startsWith("--no-") || arg === "--offline"));
+});
+
+test("normal tools, extensions, context, and session saving are not overridden", () => {
   const args = privateArgs("/pi/cli.js", "/private/runtime.ts", "/private/SYSTEM.md");
-  for (const flag of ["--no-context-files", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-tools", "--no-session", "--no-approve", "--offline"]) assert.ok(args.includes(flag));
-  assert.equal(args[args.indexOf("--models") + 1], MODEL_REF);
-  assert.equal(args.filter(x => x === "--extension").length, 1);
-  assert.ok(!args.includes("--resume") && !args.includes("--continue"));
+  assert.deepEqual(args, ["/pi/cli.js", "--provider", "mlx-core", "--model", MODEL,
+    "--extension", "/private/runtime.ts", "--name", "Private · local model", "--append-system-prompt", "/private/SYSTEM.md"]);
 });
 
 test("shell quoting preserves paths without expanding shell syntax", () => {
@@ -39,45 +73,24 @@ test("shell quoting preserves paths without expanding shell syntax", () => {
   assert.equal(result.stdout, value);
 });
 
-function harness() {
+test("only conversation-model selection is guarded; shell/tools/persistence remain normal", () => {
   const handlers = new Map();
-  let tools = [];
-  const pi = { on: (name, fn) => handlers.set(name, fn), setActiveTools: next => { tools = next; }, getActiveTools: () => tools };
-  installPrivateGuards(pi, () => { throw new Error("REFUSED"); });
-  const ctx = { model, sessionManager: { getSessionFile: () => undefined }, ui: { setStatus() {} } };
-  return { handlers, pi, ctx };
-}
-
-test("guards refuse cloud selection, cloud requests, persistence, and tool activation", () => {
-  const { handlers: h, pi, ctx } = harness();
-  h.get("session_start")({}, ctx);
-  h.get("before_agent_start")({}, ctx);
-  h.get("before_provider_request")({}, ctx);
-  assert.throws(() => h.get("model_select")({ model: { ...model, provider: "openai" } }), /REFUSED/);
-  assert.throws(() => h.get("before_provider_request")({}, { ...ctx, model: { ...model, provider: "openai" } }), /REFUSED/);
-  assert.throws(() => h.get("session_start")({}, { ...ctx, sessionManager: { getSessionFile: () => "/saved.jsonl" } }), /REFUSED/);
-  const saved = { ...ctx, sessionManager: { getSessionFile: () => "/saved.jsonl" } };
-  for (const event of ["session_switch", "session_fork", "before_provider_request", "before_agent_start"]) {
-    assert.throws(() => h.get(event)({}, saved), /REFUSED/);
+  installLocalModelGuard({ on: (name, fn) => handlers.set(name, fn) }, () => { throw new Error("REFUSED"); });
+  const model = { provider: "mlx-core", id: MODEL };
+  const ctx = { model, ui: { setStatus() {} } };
+  for (const name of ["session_start", "before_agent_start", "before_provider_request"]) {
+    handlers.get(name)({}, ctx);
+    assert.throws(() => handlers.get(name)({}, { ...ctx, model: { provider: "openai" } }), /REFUSED/);
   }
-  pi.setActiveTools(["read"]);
-  assert.throws(() => h.get("before_agent_start")({}, ctx), /REFUSED/);
+  assert.throws(() => handlers.get("model_select")({ model: { provider: "openai" } }), /REFUSED/);
+  assert.equal(handlers.has("tool_call"), false);
+  assert.equal(handlers.has("user_bash"), false);
+  assert.ok(isLocalModel(model));
+  assert.ok(isLocalModel({ provider: "mlx-core", id: "another-installed-local-model" }));
+  assert.equal(isLocalModel(undefined), false);
 });
 
-test("tools and user shell escapes are denied", () => {
-  const { handlers: h } = harness();
-  assert.equal(h.get("tool_call")().block, true);
-  assert.equal(h.get("user_bash")().result.exitCode, 1);
-});
-
-test("runtime exits rather than throwing when not launched with the private profile", () => {
-  const url = new URL("./runtime.ts", import.meta.url).href;
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `import runtime from ${JSON.stringify(url)}; await runtime({});`], { env: {}, encoding: "utf8" });
-  assert.equal(result.status, 78, result.stderr);
-  assert.match(result.stderr, /No fallback/);
-});
-
-test("slash command refuses arguments without echoing or forwarding them", async () => {
+test("slash command refuses prompt arguments without echoing or forwarding them", async () => {
   const { default: command } = await import("./index.ts");
   let handler;
   command({ registerCommand: (name, definition) => { assert.equal(name, "private"); handler = definition.handler; } });

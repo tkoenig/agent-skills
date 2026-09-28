@@ -1,67 +1,62 @@
-# Private local chat
+# Local-model Pi (`/private`)
 
-`/private` opens a **fresh Ghostty window** running the installed
-`mlx-core/mlx-community/Qwen3.8-27B-4bit` model. Ask your private question in that
-window, not as an argument to `/private`. Each invocation starts a new chat;
-it does not locate or resume earlier private windows.
+`/private` opens a fresh Ghostty window running **normal Pi with local Qwen**.
+It uses the same working directory and agent configuration directory, with the
+normal tools, shell, files, extensions, skills, credentials, network access, and
+saved sessions. It does not create an isolated profile or disable capabilities.
 
-## Activation
+The conversation starts on `mlx-core/mlx-community/Qwen3.8-27B-4bit`.
+A model-only guard stops the session rather than switching its conversation to a
+non-MLX provider. Other installed MLX models may be selected. Tool integrations
+and explicitly launched subagents retain their normal configuration; this guard
+is not a network firewall or a promise that every integration runs locally.
 
-This extension is listed in `global_extensions` in this repository's `config.yml`.
-The global link is `~/.pi/agent/extensions/private` → this directory. After linking,
-run `/reload` in existing Pi sessions. No dotfiles `settings.json` entry is needed.
-To load it for one session without a global link:
+## Use
 
-```sh
-pi --extension /path/to/agent-skills/extensions/private/index.ts
-```
+The extension is listed in `global_extensions` in `config.yml` and linked as
+`~/.pi/agent/extensions/private`. Run `/reload` in the parent Pi, then `/private`.
+Ask your question in the new window; the launcher does not forward conversation
+history or automatically return results to the parent.
 
-Requires Ghostty 1.3+ with macOS Automation permission, the existing
-`~/.pi/agent/extensions/mlx-core` provider, its managed `mlx-serve` installation,
-and the already-downloaded Qwen model. This feature installs no software or
-models. MLX starts lazily on the first message.
+**If upgrading from the initial restricted version, close that old private
+window and launch a new one.** Reloading it cannot remove its old CLI restrictions.
 
-The machine-local personal-data routing instruction in `~/.pi/agent/AGENTS.md`
-recommends `/private` rather than manual launch.
-The private runtime supplies its own instructions instead of loading that file.
+Contacts can be accessed normally through the shell and the installed
+`/opt/homebrew/bin/contactctl`. No separate Contacts wrapper is required.
+The global `~/.pi/agent/AGENTS.md` routing rule directs cloud sessions here;
+the launcher-supplied instructions identify this as the authorized local session.
 
-## Boundaries
+Local inference is not an offline sandbox or a no-retention guarantee. Tools
+can access networks and local records, credentials are available normally, and
+Pi history/terminal scrollback/logs persist. This is the user's requested normal
+Pi access with a local conversation model, not a restricted privacy appliance.
 
-- No parent prompt, history, working directory, credentials, or session IDs are
-  forwarded. The launcher accepts only the installed Pi executable path.
-- Fresh profile under `~/.pi-private/run-*` (mode 0700), empty auth storage,
-  allowlisted environment, no discovered extensions/skills/context/templates.
-- Only the private guard and existing MLX provider load. No Intercom, subagents,
-  MCP, remote research, or automatic result/completion handoff.
-- Pinned local model, offline catalog behavior, no automatic retries or
-  compaction. Guards terminate the private process on unapproved model
-  selection/request, saved-session use, or tool activation. They use process
-  termination because Pi can swallow exceptions from extension hooks.
-- **No tools are enabled. Contacts access is not implemented.** This initial
-  version supports direct local conversation and explicitly supplied input.
-  Scoped read-only Contacts access should be added and reviewed separately.
-- Pi session persistence is disabled (`--no-session`). Closing the window loses
-  the conversation. The isolated profile contains configuration, not an intended
-  transcript archive. Terminal scrollback, MLX/server logs, and explicit user
-  exports can still remain locally.
-- This is **not an OS sandbox or network firewall**. It trusts the local Pi,
-  Ghostty, and MLX implementations and the user's machine. `--offline` alone
-  does not prevent model HTTP requests. Other processes running as this user
-  can still access local files. The ordinary cloud session's personal-data
-  restriction remains an instruction, not an OS access boundary.
+## Installation and runtime selection
 
-The launcher deliberately has no cloud fallback, shell tools, reuse/resume,
-Contacts automation, or transcript export to the originating session. Wait for
-`PRIVATE · local Qwen` in Pi's status before entering personal information.
-An error window is not a verified private session.
+Requires Ghostty 1.3+, macOS Automation permission, the existing `mlx-core`
+extension and its installed Qwen model. No software or models are installed.
+The normal agent directory also exposes Pi's cached helper binaries (such as fd),
+and the launcher does not force offline mode.
+
+`process.execPath` supplies the running Node executable and `process.argv[1]`
+supplies the running Pi entry point. There is no separate Node version pin or
+PATH lookup. The current `~/bin/pi` wrapper selects Pi through mise; changing
+that wrapper affects newly started parent sessions. Existing sessions retain
+their current runtime. Arbitrary wrapper-injected CLI flags are not replayed.
+The child inherits its terminal launch environment and receives the parent's
+agent-directory path explicitly; variables set only inside the parent process
+are not copied into the new Ghostty window.
+
+`cli-path.mjs` resolves npm bin symlinks and verifies the owning package's
+`bin.pi`. Both `dist/cli.js` and `dist/bundle/cli.js` are supported. Unsupported
+standalone/packaging formats are refused rather than guessed.
 
 ## Files
 
-- `index.ts`: parent-side slash command; opens Ghostty only.
-- `launch.mjs`: creates the isolated profile and launches Pi in the terminal.
-- `runtime.ts`: loads the MLX provider and installs fail-closed guards.
-- `guards.mjs`, `policy.mjs`: guard logic and fixed launch policy.
-- `SYSTEM.md`: private session instructions.
+- `index.ts`: slash command and Ghostty window creation.
+- `launch.mjs`, `cli-path.mjs`, `policy.mjs`: executable discovery and normal Pi launch.
+- `runtime.ts`, `guards.mjs`: local conversation-model guard only.
+- `SYSTEM.md`: identifies the local session for personal-data routing.
 
 ## Validation
 
@@ -70,8 +65,9 @@ node --test extensions/private/private.test.mjs
 node extensions/private/smoke.mjs "$(mise which pi)"
 ```
 
-The smoke test uses only synthetic text. It verifies that an unapproved provider
-pointing at a loopback HTTP trap receives **zero requests**, then asks local Qwen
-for a fixed canary reply and checks that Pi saved no JSONL transcript. It leaves
-a synthetic-only temporary profile for inspection. Move unwanted profiles to
-macOS Trash; never commit runtime profiles, logs, or personal data.
+Unit tests cover package layouts, the actual launcher, preserved configuration
+and environment, unrestricted launch arguments, and the model guard.
+The smoke test runs the actual launcher with normal configuration and asks for
+a synthetic shell command only. It verifies local model use, a successful Bash
+tool call, and ordinary session persistence in a dedicated synthetic-test session
+directory. It never queries Contacts or other personal records.
