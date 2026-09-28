@@ -31,6 +31,7 @@ global_extensions:
   - openai-image-gen
   - current-pr
   - mlx-core
+  - private
 
 # GitHub-hosted skills
 github_skills:

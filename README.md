@@ -174,6 +174,14 @@ Re-pitch the previous response with brief context and concise Simplified Technic
 
 ## Extensions
 
+### private
+Adds `/private`: opens a fresh local-Qwen chat in Ghostty with no parent context,
+tools, Intercom, or automatic result handoff. Pi transcript persistence is disabled;
+terminal scrollback and MLX logs may remain locally. Requires the `mlx-core`
+extension and its installed Qwen model. Contacts access is not implemented.
+Enabled through `global_extensions`; see
+[`extensions/private/README.md`](extensions/private/README.md) for boundaries and tests.
+
 ### mlx-core
 Local MLX Core / `mlx-serve` provider, adapting Armin Ronacher's `pi-ds4`
 lease, watchdog, and lazy-start approach. Shares downloaded Qwen MLX weights
