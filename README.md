@@ -74,9 +74,9 @@ output filter; use human review or a deterministic redaction step for strict
 confidentiality. No sensitive-file audit is run during installation.
 
 ### historian
-Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-5.6 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
+Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-6 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
 
-Requires the `pi-subagents` package and access to `openai-codex/gpt-5.6-sol`. The agent is read-only by instruction, not a filesystem sandbox.
+Requires the `pi-subagents` package and access to `openai-codex/gpt-6-sol`. The agent is read-only by instruction, not a filesystem sandbox.
 
 Subagents are installed separately from `./bin/sync`. From this repository, link the agent globally (the destination must not already exist):
 
