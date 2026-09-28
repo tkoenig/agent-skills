@@ -9,7 +9,7 @@ Retrieve authoritative DaisyUI 5 component syntax, setup guidance, and theme con
 
 ## Calling from pi (pi-mcp-adapter)
 
-The server is configured globally in `~/.config/mcp/mcp.json` (license injected via fnox keychain profile `daisyui`). Call tools through the `mcp` proxy tool; `args` is a JSON **string**:
+The server is configured globally in `~/.config/mcp/mcp.json` (email/license injected via fnox profile `daisyui` from the 1Password `Labs` vault item `daisyui License` (username → `EMAIL`, password → `LICENSE`)). Call tools through the `mcp` proxy tool; `args` is a JSON **string**:
 
 ```
 mcp({ tool: "daisyui_blueprint_daisyui_setup_expert", args: "{\"workflowId\":\"my-task\",\"projectRoot\":\"/abs/path\",\"SetupIDs\":[]}" })
