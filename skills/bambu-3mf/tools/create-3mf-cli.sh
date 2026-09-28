@@ -50,13 +50,7 @@ else
     BAMBU_CLI="$STOCK_BAMBU_CLI"
 fi
 
-# --- Presets ---
-declare -A PRESET_SETTINGS
-PRESET_SETTINGS[default]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=3 top_shell_layers=4 bottom_shell_layers=3 sparse_infill_density=15% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
-PRESET_SETTINGS[solid]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=4 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=100% sparse_infill_pattern=zig-zag enable_support=0 brim_type=auto_brim"
-PRESET_SETTINGS[fast]="layer_height=0.28 initial_layer_print_height=0.28 wall_loops=2 top_shell_layers=3 bottom_shell_layers=3 sparse_infill_density=10% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
-PRESET_SETTINGS[fine]="layer_height=0.12 initial_layer_print_height=0.12 wall_loops=3 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=15% sparse_infill_pattern=gyroid enable_support=0 brim_type=auto_brim"
-PRESET_SETTINGS[strong]="layer_height=0.2 initial_layer_print_height=0.2 wall_loops=5 top_shell_layers=5 bottom_shell_layers=5 sparse_infill_density=40% sparse_infill_pattern=cubic enable_support=0 brim_type=auto_brim"
+# Presets are defined in the Python settings builder below.
 
 # --- Parse arguments ---
 STL_FILES=()
@@ -227,7 +221,7 @@ find_machines_json() {
 
 # --- Build settings files ---
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap '/usr/bin/trash "$TMPDIR" || { printf "ERROR: Could not move temporary directory to Trash: %s\\nPlease resolve cleanup manually; no permanent deletion attempted.\\n" "$TMPDIR" >&2; exit 1; }' EXIT
 
 # Base settings from our template
 BASE_TEMPLATE="$SKILL_DIR/settings/base_template.json"
