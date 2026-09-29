@@ -41,6 +41,26 @@ View logs for failed steps only:
 gh run view <run-id> --repo owner/repo --log-failed
 ```
 
+## Image and Video Attachments
+
+Prefer native `--attach` (gh v2.99.0+) over gist hosting, release assets, or browser-cookie workarounds. Supported on `gh issue` and `gh pr` commands: `create`, `edit`, and `comment`.
+
+```bash
+gh issue create --repo owner/repo --title "Layout bug" \
+  --body-file /tmp/issue.md --attach './screenshot.png#Broken layout'
+gh pr comment 55 --repo owner/repo --body "Updated screenshots" \
+  --attach ./before.png --attach ./after.png
+```
+
+- Requires push access to the repository on GitHub.com or GitHub Enterprise Cloud; not GitHub Enterprise Server.
+- Images/videos only, not arbitrary files such as logs or ZIPs. Repeat `--attach` for multiple files (up to 50).
+- Local Markdown references such as `![Broken layout](./screenshot.png)` are rewritten to uploaded URLs when the matching file is attached. Unreferenced attachments are appended. Existing Markdown alt text takes precedence over `#alt text`; videos do not accept alt text.
+- Inspect images for secrets or private information before uploading; confirm the target repository and intended visibility.
+- Partial upload failure can still create the issue and print its URL while exiting nonzero. Inspect stdout and the created issue before retrying; repair it rather than creating a duplicate.
+- If the flag is unavailable, check `gh --version` and command help; request an upgrade rather than silently using another hosting service. If permissions prevent uploading, explain the limitation and offer the browser flow.
+
+Reference: [Attaching files with GitHub CLI](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli).
+
 ## API for Advanced Queries
 
 The `gh api` command is useful for accessing data not available through other subcommands.
