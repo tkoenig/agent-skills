@@ -3,7 +3,7 @@ name: historian
 description: Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations.
 advertise: true
 tools: read, grep, find, ls, bash
-model: openai-codex/gpt-6-sol
+model: openai-codex/gpt-6.1-sol
 thinking: low
 systemPromptMode: replace
 inheritProjectContext: false

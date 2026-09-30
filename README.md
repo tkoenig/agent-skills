@@ -74,9 +74,9 @@ output filter; use human review or a deterministic redaction step for strict
 confidentiality. No sensitive-file audit is run during installation.
 
 ### historian
-Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-6 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
+Searches previous Pi sessions to recover decisions, rationale, changes, and unresolved work with source citations. Uses GPT-6.1 Sol with low thinking and fresh context. It searches with the `pi-session-query` helper, then inspects session records directly rather than launching a nested Pi process.
 
-Requires the `pi-subagents` package and access to `openai-codex/gpt-6-sol`. The agent is read-only by instruction, not a filesystem sandbox.
+Requires the `pi-subagents` package and access to `openai-codex/gpt-6.1-sol`. The agent is read-only by instruction, not a filesystem sandbox.
 
 Subagents are installed separately from `./bin/sync`. From this repository, link the agent globally (the destination must not already exist):
 
@@ -175,12 +175,10 @@ Re-pitch the previous response with brief context and concise Simplified Technic
 ## Extensions
 
 ### private
-Adds `/private`: opens normal Pi with local Qwen in Ghostty, preserving normal
-tools, shell access, extensions, credentials, working directory, and saved sessions.
-No parent conversation is forwarded or automatically returned. Only the
-conversation model is restricted to MLX; tools retain normal network access.
-Requires `mlx-core` and its installed Qwen model. Contacts can be accessed through
-the installed `contactctl` CLI using ordinary shell tools.
+Adds `/private`: starts a fresh session in the current Pi window, selects local
+Qwen, and names it `Private`. Tools, configuration, and session saving stay normal.
+No launcher, extra prompt, status label, or model lock. Requires `mlx-core` and
+its installed Qwen model.
 Enabled through `global_extensions`; see
 [`extensions/private/README.md`](extensions/private/README.md) for boundaries and tests.
 

@@ -1,43 +1,64 @@
-// Test normal configuration with synthetic input only. Never queries Contacts.
-// node extensions/private/smoke.mjs /absolute/path/to/installed/pi
+// Exercise the real command without making any model requests.
+// node extensions/private/smoke.mjs "$(mise which pi)"
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolvePiCli } from "./cli-path.mjs";
 
-const cli = resolvePiCli(process.argv[2]);
 const root = dirname(fileURLToPath(import.meta.url));
-const workspace = realpathSync(mkdtempSync(join(tmpdir(), "pi-local-shell-smoke-")));
-const sessions = join(workspace, "sessions");
-mkdirSync(sessions);
-const agentDir = resolve(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"));
-const result = await new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, [join(root, "launch.mjs"), cli, workspace, agentDir], {
-    env: { ...process.env, PI_CODING_AGENT_SESSION_DIR: sessions }, stdio: ["pipe", "pipe", "pipe"],
-  });
-  let stdout = "", stderr = "";
-  const timer = setTimeout(() => { child.kill("SIGTERM"); reject(new Error("Launcher smoke timed out")); }, 240000);
-  child.stdout.on("data", data => { stdout += data; });
-  child.stderr.on("data", data => { stderr += data; });
-  child.once("error", error => { clearTimeout(timer); reject(error); });
-  child.once("exit", code => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
-  child.stdin.end("Use the bash tool to run exactly: printf PRIVATE_SHELL_SMOKE_OK\nThen reply with the command output. Do not use any other tools or read any files. This is a synthetic launcher test.\n");
+const profile = realpathSync(mkdtempSync(join(tmpdir(), "pi-private-shortcut-")));
+writeFileSync(join(profile, "settings.json"), JSON.stringify({
+  extensions: [join(root, "../mlx-core/index.ts"), join(root, "index.ts")],
+}));
+const child = spawn(process.execPath, [realpathSync(process.argv[2]), "--mode", "rpc", "--no-context-files", "--provider", "openai", "--model", "gpt-4o"], {
+  cwd: profile, env: { ...process.env, PI_CODING_AGENT_DIR: profile, PI_OFFLINE: "1" }, stdio: ["pipe", "pipe", "pipe"],
 });
-assert.equal(result.code, 0, `Launcher failed (exit ${result.code}); inspect the synthetic test locally.`);
-assert.match(result.stdout, /PRIVATE_SHELL_SMOKE_OK/);
-assert.ok(!result.stderr.includes("Offline mode enabled, skipping download"), "unexpected offline helper warning");
-const files = readdirSync(sessions, { recursive: true }).filter(name => String(name).endsWith(".jsonl"));
-assert.equal(files.length, 1, "expected one persisted synthetic Pi session");
-const entries = readFileSync(join(sessions, files[0]), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
-const messages = entries.filter(entry => entry.type === "message").map(entry => entry.message);
-const replies = messages.filter(message => message.role === "assistant");
-assert.ok(replies.length > 0 && replies.every(message => message.provider === "mlx-core"), "non-local or missing model reply");
-const calls = replies.flatMap(message => message.content).filter(part => part.type === "toolCall");
-assert.ok(calls.some(call => call.name === "bash" && call.arguments.command.includes("printf PRIVATE_SHELL_SMOKE_OK")), "missing synthetic shell call");
-assert.ok(calls.every(call => call.name === "bash"), "unexpected tool invocation; inspect the synthetic test locally");
-assert.ok(messages.some(message => message.role === "toolResult" && message.toolName === "bash" && !message.isError && message.content.some(part => part.type === "text" && part.text.includes("PRIVATE_SHELL_SMOKE_OK"))), "missing successful shell result");
-console.log("PASS: actual launcher, local model, normal Bash access, saved session, no offline-helper warning");
-console.log(`Synthetic test session retained at ${sessions}`);
+let buffer = "", stderr = "", seq = 0, modelStarted = false;
+const pending = new Map();
+child.stderr.on("data", data => { stderr += data; });
+child.stdout.on("data", data => {
+  buffer += data;
+  let end;
+  while ((end = buffer.indexOf("\n")) >= 0) {
+    const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+    if (!line.trim()) continue;
+    const event = JSON.parse(line);
+    if (event.type === "agent_start") modelStarted = true;
+    const request = pending.get(event.id);
+    if (event.type === "response" && request) {
+      pending.delete(event.id);
+      if (event.success) request.resolve(event.data);
+      else request.reject(new Error(event.error));
+    }
+  }
+});
+child.on("error", error => { for (const request of pending.values()) request.reject(error); });
+child.on("exit", () => { for (const request of pending.values()) request.reject(new Error(`Pi exited: ${stderr}`)); });
+const timeout = setTimeout(() => { child.kill("SIGTERM"); }, 30000);
+function call(type, data = {}) {
+  return new Promise((resolve, reject) => {
+    const id = String(++seq); pending.set(id, { resolve, reject });
+    child.stdin.write(JSON.stringify({ id, type, ...data }) + "\n");
+  });
+}
+try {
+  const before = await call("get_state");
+  await call("bash", { command: "printf SHORTCUT_PARENT_CANARY" });
+  const original = await call("get_messages");
+  assert.ok(original.messages.some(message => message.role !== "system"));
+  await call("prompt", { message: "/private" });
+  const after = await call("get_state");
+  assert.notEqual(after.sessionId, before.sessionId);
+  assert.equal(after.sessionName, "Private");
+  assert.equal(after.model.provider, "mlx-core");
+  assert.equal(after.model.id, "mlx-community/Qwen3.8-27B-4bit");
+  const messages = await call("get_messages");
+  assert.equal(messages.messages.filter(message => message.role !== "system").length, 0);
+  assert.equal(modelStarted, false);
+  console.log("PASS: real /private creates a fresh named local session in place, with zero messages/model requests");
+} finally {
+  clearTimeout(timeout);
+  child.stdin.end();
+}

@@ -1,102 +1,65 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { resolvePiCli } from "./cli-path.mjs";
-import { installLocalModelGuard } from "./guards.mjs";
-import { isLocalModel, MODEL, privateArgs, shellQuote } from "./policy.mjs";
+import register from "./index.ts";
 
-function cliFixture(layout = "dist/bundle/cli.js", name = "@earendil-works/pi-coding-agent") {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "private-cli-test-")));
-  const pkg = join(root, "package");
-  const cli = join(pkg, layout);
-  mkdirSync(dirname(cli), { recursive: true });
-  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name, type: "module", bin: { pi: layout } }));
-  writeFileSync(cli, "// Test fixture only\n");
-  const link = join(root, "pi");
-  symlinkSync(cli, link);
-  return { root, pkg, cli, link };
+const local = { provider: "mlx-core", id: "mlx-community/Qwen3.8-27B-4bit" };
+function harness({ available = true, cancelled = false, select = true, history = [] } = {}) {
+  const events = [], notices = [];
+  let handler;
+  register({
+    registerCommand: (name, definition) => { assert.equal(name, "private"); handler = definition.handler; },
+    setModel: async model => { events.push(["model", model]); return select; },
+    setSessionName: name => events.push(["name", name]),
+  });
+  const ctx = {
+    ui: { notify: message => notices.push(message) },
+    modelRegistry: { find: (provider, id) => { assert.equal(provider, local.provider); assert.equal(id, local.id); return available ? local : undefined; } },
+    sessionManager: { getBranch: () => history },
+    waitForIdle: async () => { events.push(["idle"]); },
+    newSession: async options => {
+      events.push(["new"]);
+      if (!cancelled) await options.withSession({
+        sendUserMessage: async (command, options) => {
+          assert.equal(command, "/private --finish");
+          assert.equal(options.expandPromptTemplates, true, "must dispatch a command, not send an LLM prompt");
+          events.push(["dispatch"]);
+          await handler("--finish", ctx);
+        },
+      });
+      return { cancelled };
+    },
+  };
+  return { run: args => handler(args, ctx), events, notices };
 }
 
-test("CLI discovery handles bundled/unbundled installs and npm bin symlinks", () => {
-  for (const layout of ["dist/cli.js", "dist/bundle/cli.js", "dist/future/layout/cli.js"]) {
-    const f = cliFixture(layout);
-    assert.equal(resolvePiCli(f.link), f.cli);
-    assert.equal(resolvePiCli(f.cli), f.cli);
-  }
+test("new session first, then select/name on the replacement runtime", async () => {
+  const h = harness(); await h.run("");
+  assert.deepEqual(h.events, [["idle"], ["new"], ["dispatch"], ["model", local], ["name", "Private"]]);
 });
 
-test("CLI discovery refuses unrelated packages, undeclared entry points and relative paths", () => {
-  assert.throws(() => resolvePiCli(cliFixture("dist/cli.js", "unrelated").link), /declared executable/);
-  const f = cliFixture();
-  const other = join(dirname(f.cli), "other.js");
-  writeFileSync(other, "// not the declared bin\n");
-  assert.throws(() => resolvePiCli(other), /declared executable/);
-  assert.throws(() => resolvePiCli("bin/pi"), /absolute/);
+test("missing local model leaves the current session alone", async () => {
+  const h = harness({ available: false }); await h.run("");
+  assert.deepEqual(h.events, []); assert.match(h.notices[0], /unavailable/);
 });
 
-test("actual launcher preserves working directory, normal agent profile and environment", () => {
-  const f = cliFixture();
-  const agentDir = join(f.root, "agent");
-  mkdirSync(agentDir);
-  writeFileSync(f.cli, `console.log('LAUNCH_PROBE=' + JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd()}));`);
-  const launcher = fileURLToPath(new URL("./launch.mjs", import.meta.url));
-  const result = spawnSync(process.execPath, [launcher, f.link, f.root, agentDir], {
-    env: { HOME: f.root, OPENAI_API_KEY: "synthetic-canary", PATH: "/synthetic/bin:/usr/bin" },
-    encoding: "utf8", timeout: 10000,
-  });
-  assert.equal(result.status, 0, result.stderr);
-  const line = result.stdout.split("\n").find(line => line.startsWith("LAUNCH_PROBE="));
-  assert.ok(line, "launcher never reached the declared bundled CLI");
-  const probe = JSON.parse(line.slice("LAUNCH_PROBE=".length));
-  assert.equal(probe.cwd, f.root);
-  assert.equal(probe.env.PI_CODING_AGENT_DIR, agentDir);
-  assert.equal(probe.env.OPENAI_API_KEY, "synthetic-canary");
-  assert.equal(probe.env.PATH, "/synthetic/bin:/usr/bin");
-  assert.ok(probe.args.includes(MODEL));
-  assert.ok(!probe.args.some(arg => arg.startsWith("--no-") || arg === "--offline"));
+test("cancelled replacement never changes the original model or name", async () => {
+  const h = harness({ cancelled: true }); await h.run("");
+  assert.deepEqual(h.events, [["idle"], ["new"]]);
 });
 
-test("normal tools, extensions, context, and session saving are not overridden", () => {
-  const args = privateArgs("/pi/cli.js", "/private/runtime.ts", "/private/SYSTEM.md");
-  assert.deepEqual(args, ["/pi/cli.js", "--provider", "mlx-core", "--model", MODEL,
-    "--extension", "/private/runtime.ts", "--name", "Private · local model", "--append-system-prompt", "/private/SYSTEM.md"]);
+test("model selection failure is reported without naming or sending a prompt", async () => {
+  const h = harness({ select: false }); await h.run("--finish");
+  assert.deepEqual(h.events, [["model", local]]); assert.match(h.notices[0], /Could not select/);
 });
 
-test("shell quoting preserves paths without expanding shell syntax", () => {
-  const value = "/test/a'b $(printf unsafe); /a b";
-  const result = spawnSync("/bin/sh", ["-c", `printf %s ${shellQuote(value)}`], { encoding: "utf8" });
-  assert.equal(result.status, 0);
-  assert.equal(result.stdout, value);
+test("internal finish cannot reuse a conversation, but permits system metadata", async () => {
+  const h = harness({ history: [{ type: "message", message: { role: "user" } }] });
+  await h.run("--finish"); assert.deepEqual(h.events, []);
+  const empty = harness({ history: [{ type: "message", message: { role: "system" } }] });
+  await empty.run("--finish"); assert.equal(empty.events[0][0], "model");
 });
 
-test("only conversation-model selection is guarded; shell/tools/persistence remain normal", () => {
-  const handlers = new Map();
-  installLocalModelGuard({ on: (name, fn) => handlers.set(name, fn) }, () => { throw new Error("REFUSED"); });
-  const model = { provider: "mlx-core", id: MODEL };
-  const ctx = { model, ui: { setStatus() {} } };
-  for (const name of ["session_start", "before_agent_start", "before_provider_request"]) {
-    handlers.get(name)({}, ctx);
-    assert.throws(() => handlers.get(name)({}, { ...ctx, model: { provider: "openai" } }), /REFUSED/);
-  }
-  assert.throws(() => handlers.get("model_select")({ model: { provider: "openai" } }), /REFUSED/);
-  assert.equal(handlers.has("tool_call"), false);
-  assert.equal(handlers.has("user_bash"), false);
-  assert.ok(isLocalModel(model));
-  assert.ok(isLocalModel({ provider: "mlx-core", id: "another-installed-local-model" }));
-  assert.equal(isLocalModel(undefined), false);
-});
-
-test("slash command refuses prompt arguments without echoing or forwarding them", async () => {
-  const { default: command } = await import("./index.ts");
-  let handler;
-  command({ registerCommand: (name, definition) => { assert.equal(name, "private"); handler = definition.handler; } });
-  const notices = [];
-  await handler("synthetic-private-input", { ui: { notify: message => notices.push(message) } });
-  assert.equal(notices.length, 1);
-  assert.match(notices[0], /without arguments/);
-  assert.ok(!notices[0].includes("synthetic-private-input"));
+test("arbitrary prompt arguments are not forwarded", async () => {
+  const h = harness(); await h.run("synthetic-private-input");
+  assert.deepEqual(h.events, []); assert.ok(!h.notices[0].includes("synthetic-private-input"));
 });
