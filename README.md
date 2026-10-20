@@ -125,6 +125,12 @@ Review live Hunk sessions using the skill bundled with the installed CLI. `skill
 ### heroku
 Manage Heroku apps, dynos, add-ons, config, and restarts via Heroku CLI/API.
 
+### omniwm-computer-use
+Local Pi adaptation inspired by the community OmniWM Computer Use skill.
+Provides exact-window CLI targeting, Dwindle configuration guidance, and a
+synchronous command wrapper that restores focus without a background daemon.
+Requires OmniWM with IPC enabled; the optional wrapper uses Python 3.
+
 ### openscad
 Create, validate, preview, and export OpenSCAD 3D models for 3D printing.
 
