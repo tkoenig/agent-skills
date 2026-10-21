@@ -11,7 +11,7 @@ Use native Safari MCP for browser testing and debugging whenever it is available
 
 | Situation | Preferred path |
 | --- | --- |
-| Safari 27 beta or Safari Technology Preview, debugging/testing | Safari MCP (native `safari_*` tools via pi-mcp-adapter; fallback `scripts/mcp.sh`) |
+| Safari 27 beta or Safari Technology Preview, debugging/testing | Safari MCP (native `mcp__safari__*` tools via `codemode`; fallback `scripts/mcp.sh`) |
 | DOM interactions, console, network, viewport, media emulation, page screenshots | Safari MCP |
 | Stable Safari without `safaridriver --mcp` | AppleScript scripts |
 | Readable extraction from an article | `safari-content.sh` |
@@ -27,26 +27,32 @@ Safari MCP requires **Safari 27 beta** or **Safari Technology Preview**. It is n
 2. In Safari Settings > Advanced, enable **Show features for web developers**.
 3. In Safari Settings > Developer, enable **Allow/Enable remote automation and external agents** (the label varies by build).
 
-### Preferred: pi-mcp-adapter
+### Preferred: native Pi MCP
 
-The server is configured globally in `~/.config/mcp/mcp.json` as `safari` (Safari Technology Preview `safaridriver --mcp`, `lifecycle: "keep-alive"` so tabs, console logs, and network recordings share one browser session across calls). Call tools through the `mcp` proxy tool; `args` is a JSON **string**:
+The server is configured globally in `~/.pi/agent/mcp.json` as `safari`, running Safari Technology Preview's `safaridriver --mcp`. Pi connects at startup; reuse this connection so tabs, console logs, and network recordings share one browser session across calls. Call tools through `codemode` with ordinary argument objects:
 
+```js
+await searchTools("safari"); // discover tools/schemas
+await tools.mcp__safari__navigate_to_url({ url: "https://example.com" });
+await tools.mcp__safari__evaluate_javascript({ expression: "return document.title;" });
+await tools.mcp__safari__screenshot({}); // returns a PNG file path, never inline
+await tools.mcp__safari__list_network_requests({});
+await tools.mcp__safari__get_network_request({ request_id: "..." });
 ```
-mcp({ search: "safari" })                            # discover tools/schemas
-mcp({ tool: "safari_navigate_to_url", args: "{\"url\":\"https://example.com\"}" })
-mcp({ tool: "safari_evaluate_javascript", args: "{\"script\":\"document.title\"}" })
-mcp({ tool: "safari_screenshot", args: "{}" })       # returns a PNG file path, never inline
-mcp({ tool: "safari_list_network_requests", args: "{}" })
-mcp({ tool: "safari_get_network_request", args: "{\"request_id\":\"...\"}" })
-```
 
-Available tools include tab creation/switching/closing, navigation, page information and content extraction, JavaScript evaluation, sequential page interactions, dialogs, console and network inspection, screenshots, viewport sizing, CSS media emulation, and navigation waiting. Run `mcp({ search: "safari <keyword>" })` before calling an unfamiliar tool to verify its parameters.
+Available tools include tab creation/switching/closing, navigation, page information and content extraction, JavaScript evaluation, sequential page interactions, dialogs, console and network inspection, screenshots, viewport sizing, CSS media emulation, and navigation waiting. Use `searchTools("safari <keyword>")` or `describeTool` before calling an unfamiliar tool to verify its parameters.
+
+### Preserve the user's focus
+
+Read and follow the `omniwm-computer-use` skill before browser automation on this Mac. Do not explicitly activate Safari or switch tabs unnecessarily. Prefer MCP page/content and DOM tools over foreground GUI automation; use a tab handle where supported rather than switching tabs first.
+
+The native Safari MCP tool schemas and `safaridriver --help` expose no background/no-focus option. Do not assume MCP calls cannot activate Safari; which operations steal focus on the installed build has not been verified. When an operation may activate Safari, capture the current focused window immediately before it and restore that exact window immediately afterwards, including on errors, following the OmniWM skill. Re-capture for each operation, and do not hold a focus lease while waiting for the user. Focus restoration is only a mitigation: it cannot prevent a brief activation flash. Do not hide, move, resize, or close the user's existing windows to work around this.
 
 Safari's MCP server runs locally. Captured page content, screenshots, network data, and console logs are sent to the MCP client/agent, so use it only with trusted agents and pages that do not expose secrets.
 
 ### Fallback: mcporter helper
 
-Use only when the native adapter is unavailable. On first use, configure MCPorter with the helper **before** running `status`, `list`, or `call`:
+Use only when the native Pi MCP connection is unavailable. On first use, configure MCPorter with the helper **before** running `status`, `list`, or `call`:
 
 ```bash
 {baseDir}/scripts/mcp.sh install
