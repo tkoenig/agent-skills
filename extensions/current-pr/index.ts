@@ -545,7 +545,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     latestCtx = ctx;
-    tryPinFromUrl(event.prompt, ctx);
+    if (event.messageType === "user") {
+      tryPinFromUrl(event.prompt, ctx);
+    }
   });
 
   pi.on("agent_end", async (_event, ctx) => {

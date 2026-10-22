@@ -44,6 +44,7 @@ function harness() {
     get statuses() { return statuses; },
     get notifications() { return notifications; },
     start: () => events.get("session_start")({}, ctx),
+    beforeAgentStart: (event) => events.get("before_agent_start")(event, ctx),
     async stop(reason) { await events.get("session_shutdown")({ reason }, ctx); stale = true; },
     command: (args) => commands.get("current-pr")(args, ctx),
     fire() {
@@ -78,6 +79,23 @@ for (const reason of ["reload", "new", "resume", "fork", "quit"]) {
     });
   }
 }
+
+test("custom-message runs without a prompt do not pin PRs or schedule refreshes", async () => {
+  const h = harness();
+  await h.beforeAgentStart({
+    messageType: "custom",
+    message: { customType: "subagent-result", content: "https://github.com/a/b/pull/1" },
+  });
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.requests.length, 0);
+});
+
+test("user-message runs still pin PR URLs", async () => {
+  const h = harness();
+  await h.beforeAgentStart({ messageType: "user", prompt: "Review https://github.com/a/b/pull/42" });
+  assert.equal(h.timers.size, 1);
+  assert.equal([...h.timers.values()][0].delay, 0);
+});
 
 test("shutdown clears startup timer", async () => {
   const h = harness();
