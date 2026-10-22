@@ -25,6 +25,7 @@ global_prompts:
   - pr-review
   - pr-review-parallel
   - recent-changes
+  - sign-off
   - simplify
   - wait-what
 
