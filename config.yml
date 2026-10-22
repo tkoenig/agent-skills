@@ -21,6 +21,7 @@ global_skills:
 global_prompts:
   - commit
   - dependabot
+  - discuss-review
   - pr-review
   - pr-review-parallel
   - recent-changes
