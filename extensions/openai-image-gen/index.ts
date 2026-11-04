@@ -43,7 +43,7 @@ const SUBSCRIPTION_PROVIDER = "openai-codex";
 const OPENCODE_PROVIDER = "opencode";
 
 const DEFAULT_IMAGE_MODEL = "gpt-image-2";
-const DEFAULT_SUBSCRIPTION_CHAT_MODEL = "gpt-5.4";
+const DEFAULT_SUBSCRIPTION_CHAT_MODEL = "gpt-6.1-sol";
 const DEFAULT_OPENCODE_MODEL = "gpt-5.5";
 const DEFAULT_BACKEND = "auto";
 const DEFAULT_SAVE_MODE = "none";
@@ -85,7 +85,7 @@ const TOOL_PARAMS = Type.Object({
 	),
 	subscriptionChatModel: Type.Optional(
 		Type.String({
-			description: `ChatGPT subscription model used to call the image_generation tool. Defaults to ${DEFAULT_SUBSCRIPTION_CHAT_MODEL}.`,
+			description: `ChatGPT subscription model used to call the image_generation tool. Defaults to the selected openai-codex model, or ${DEFAULT_SUBSCRIPTION_CHAT_MODEL} when another provider is selected.`,
 		}),
 	),
 	size: Type.Optional(StringEnum(SIZES)),
@@ -406,6 +406,15 @@ async function parseSseForSubscriptionImage(response: Response, signal?: AbortSi
 					partialImageBase64 = event.partial_image_b64;
 				}
 
+				// Codex can deliver the final image only on the completed output item;
+				// response.completed may have an empty output array. A non-empty result
+				// is authoritative even when the item's status still says generating.
+				if (event.type === "response.output_item.done"
+					&& event.item?.type === "image_generation_call"
+					&& typeof event.item.result === "string" && event.item.result.length > 0) {
+					imageBase64 = event.item.result;
+				}
+
 				if (["response.completed", "response.done", "response.incomplete"].includes(event.type)) {
 					status = typeof event.response?.status === "string" ? event.response.status : status;
 					const outputs = Array.isArray(event.response?.output) ? event.response.output : [];
@@ -437,14 +446,16 @@ async function parseSseForSubscriptionImage(response: Response, signal?: AbortSi
 async function generateViaSubscription(
 	params: ToolParams,
 	token: string,
-	ctx: { cwd: string },
+	ctx: { cwd: string; model?: { provider?: string; id?: string } },
 	signal: AbortSignal | undefined,
 	onUpdate?: (update: { content: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }) => void,
 ): Promise<ImageResult> {
 	const config = loadConfig(ctx.cwd);
 	const accountId = extractAccountId(token);
 	const imageModel = params.model || config.model;
-	const chatModel = params.subscriptionChatModel || config.subscriptionChatModel || DEFAULT_SUBSCRIPTION_CHAT_MODEL;
+	const chatModel = params.subscriptionChatModel || config.subscriptionChatModel
+		|| (ctx.model?.provider === SUBSCRIPTION_PROVIDER ? ctx.model.id : undefined)
+		|| DEFAULT_SUBSCRIPTION_CHAT_MODEL;
 	const size = params.size || DEFAULT_SIZE;
 	const quality = params.quality || DEFAULT_QUALITY;
 	const outputFormat = params.outputFormat || DEFAULT_OUTPUT_FORMAT;
