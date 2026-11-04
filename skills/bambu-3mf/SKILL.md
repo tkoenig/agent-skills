@@ -276,6 +276,16 @@ A custom build is still kept as a fallback for macOS CLI edge cases and for repr
 
 Set `BAMBU_CLI` env var to force either binary in any tool.
 
+## Live printer status and explicit control
+
+BambuStudio's slicing CLI is separate from live printer communication. For LAN access, `latsss/bambu-cli` provides `status <profile> --json`, `monitor <profile> --json`, and `stop <profile> --json` over MQTT TLS. Read the project's printer access/runbook first (in the 3d-prints project: `docs/printers/a1-lan-access.md`); never assume credentials are missing or change LAN mode to troubleshoot a running print.
+
+- Default read-only. Run stop only on an explicit current cancellation instruction, not a hypothetical/quoted example. Follow project quick-cancel authorization; do not add redundant confirmation when already authorized. Verify acknowledgement and subsequent printer state; a software cancellation is not a safety-rated emergency stop. Never substitute mains power-off.
+- CLI JSON is wrapped: check `success`/`error`, then read `data.status.print`. Missing telemetry is unknown. Status cannot establish adhesion or visual print quality.
+- Keep access codes in protected local configuration, never logs, command arguments, repository files or chat. Installation belongs in the machine's tool manifest; different projects called bambu-cli are not interchangeable.
+- Use the process tool for explicitly requested continuous monitoring. Do not start persistent watches automatically.
+- A1/P1 camera snapshots use a separate authenticated TLS JPEG stream on port 6000, not X1 RTSPS. This CLI has no camera command. A working stream may still be too dark to assess; do not enable lights without authorization. External Home/HomeKit cameras are separate integrations.
+
 ## Related Skills
 
 - **openscad** (`.pi/skills/openscad/`) — Design `.scad` models and export STLs. See "Workflow with OpenSCAD Skill" above.
