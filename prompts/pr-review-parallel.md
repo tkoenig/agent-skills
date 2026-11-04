@@ -1,11 +1,11 @@
 ---
-description: Review GitHub PRs with three independent parallel reviewers
+description: Review GitHub PRs with four core reviewers and conditional CDN review
 argument-hint: "<PR-URL> [additional PR URLs or focus]"
 ---
 
 Review these GitHub PRs: $@
 
-By invoking this prompt, I explicitly approve the three read-only reviewer tasks defined below. Do not ask for the same approval again. Additional delegation or edits require separate approval.
+By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when its trigger applies, the one additional CDN/cache reviewer defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
 
 This is a review-only workflow. Do not edit source files, apply fixes, commit, push, merge, or post GitHub comments/reviews without explicit permission.
 
@@ -26,7 +26,7 @@ This is a review-only workflow. Do not edit source files, apply fixes, commit, p
 - Read the diff, relevant complete files, related behavior outside the diff, and relevant tests. Continue reading truncated files where needed.
 - Keep the checkout unchanged while reviewers run. If the head changes, report the mismatch instead of mixing findings from different revisions.
 
-## 3. Launch three independent reviewers
+## 3. Launch independent reviewers
 
 Use fresh context, not forked context. Reviewers must inspect instructions, source, and the pinned diff directly; they must not rely on the main conversation or another reviewer's conclusions.
 
@@ -41,13 +41,31 @@ Default angles:
 3. **Simplicity and maintainability**
    Check for unnecessary complexity, duplicate structure, single-use wrappers, brittle abstractions, confusing names, verbosity, and cleanup that is clearly worth doing. Verify definitions and actual usage of newly introduced or copied utilities, options, and abstractions. Prefer local evidence before external pattern research. Require concrete benefit; avoid speculative refactors and subjective style preferences.
 
-Use these three angles unless the user specifies others. Adapt their emphasis to the PR: UX/accessibility for UI changes, auth/privacy for security-sensitive work, accuracy and reader flow for documentation. Prefer three focused reviewers over many vague ones.
+4. **Cross-surface and representation consistency**
+   Trace changed behavior through callers and alternate renderers: HTML/Markdown twins, search, profiles, bookmarks, recommendations, related rows and compact variants. Check attribution, display titles, date semantics, links and access messaging, especially logic isolated inside components. Require meaningful content parity, not identical layouts or Markdown equivalents of interactive controls. Distinguish newly introduced or expanded gaps from pre-existing omissions. For other stacks, inspect equivalent APIs, exports or feeds; report when none apply.
+
+Use these four core angles unless the user specifies others, plus the conditional CDN/cache angle below when applicable. Adapt their emphasis to the PR: UX/accessibility for UI changes, auth/privacy for security-sensitive work, accuracy and reader flow for documentation. Keep each reviewer focused.
 
 All reviewers must apply relevant project conventions. For UI work, check semantic HTML, accessible names and label associations, and correct framework usage. Plain HTML labels are valid when correctly associated; framework helpers are not inherently required.
 
+### Conditional fifth reviewer: CDN/cache behavior
+
+Before dispatch, add one independent CDN/cache reviewer when the diff changes cache headers, keys, tags, TTLs or purge calls; changes public visibility/access/publication/deletion for cached content; or moves rendering/data across cache boundaries. Do not add it merely because the project uses a CDN, or for cosmetic/copy-only changes. State the concrete trigger, or briefly state why it does not apply.
+
+5. **CDN/cache correctness and invalidation cost**
+   Trace affected responses and mutations through relevant CDN, browser and application caches. Check both missing and excessive invalidation—not only whether a purge could improve freshness.
+
+   - Map actual cache keys, tags, variants (HTML/Markdown, frames/fragments, authentication/geography), TTLs and stale-serving behavior using source/configuration. Include cached error responses and restoration paths where relevant. Do not assume a working origin response proves edge behavior.
+   - Distinguish continued access/playback of the affected item from stale references, recommendations, counts or sitemap entries elsewhere. Establish which outcomes require immediate invalidation; do not assume immediate consistency across every surface is a requirement.
+   - Check purge blast radius, cache warmth/origin load, and whether item-specific invalidation suffices. Evaluate mutation, import and restore behavior without automatically coupling them to broad corpus purges. Separate explicit operator-triggered purging from automatic invalidation when appropriate to the established requirements.
+   - For a proposed purge/freshness change, identify the reachable stale behavior, its impact, the required freshness guarantee, and the operational cost of the remedy. If acceptable staleness or urgency is unknown, raise a product decision rather than inventing a requirement or usage frequency. Do not dismiss access/privacy/security violations as harmless cache staleness.
+   - Focus on cache semantics; the consistency reviewer still owns source-level content parity. Use local source/configuration first and relevant available caching/provider guidance. No live purges, production probes, load tests or competing browser/stateful test execution; the existing owners retain validation. Report unverified deployment assumptions.
+
+This reviewer uses the same pinned checkout, fresh-context/read-only boundaries, finding contract and top-level async workflow as the core reviewers. It reviews the cost of its own recommendations; the coordinator applies the proportionality check below to all reviewers' proposed fixes.
+
 ### Select applicable skills
 
-Before dispatch, inspect the diff, affected behavior, and PR claims. Discover available skills and explicitly assign relevant ones to the three reviewer tasks, including their paths and why they apply. Select by behavior, not merely the project's technology stack; do not load every skill or add reviewers to cover the list.
+Before dispatch, inspect the diff, affected behavior, and PR claims. Discover available skills and explicitly assign relevant ones to the scheduled reviewer tasks, including their paths and why they apply. Select by behavior, not merely the project's technology stack; do not load every skill or add reviewers to cover the list.
 
 For Rails/Hotwire projects, use this routing when the skills are available:
 
@@ -70,12 +88,13 @@ For other stacks and specialist changes, select equivalent available guidance, s
 - Prefer the domain-specific HWC skill; add Stimulus fundamentals only when framework-level controller behavior also needs scrutiny. Multiple skills may apply, but ordinary server-rendered markup does not automatically require a Hotwire review.
 - Normally assign behavioral/framework guidance to correctness, regression contracts to tests, and reference-pattern research plus relevant UI conventions to maintainability. Adjust ownership to the actual diff; skills equip the existing angles rather than replace them.
 - For relevant Rails architectural changes, have the maintainability reviewer use `real-world-rails` to inspect comparable implementations in actively maintained apps. Keep research bounded to the changed pattern, cite actual source, and explain relevance. External patterns are comparative evidence, not mandatory conventions; a different approach alone is not a finding.
+- Assign project representation guidance and relevant behavioral skills to the consistency reviewer; it owns source-level parity checks, not competing browser or stateful test execution.
 - Assign browser verification to one owner and stateful test execution to one owner, identifying any shared-state or resource constraints. Owners may be the same reviewer. Reading a skill is not execution of its checks.
 - Skills grant no additional authority. Reviewers must not follow skill instructions to delegate further, edit files, publish, access production, or perform restricted operations. Research reference repositories directly within the read-only boundary.
 - Reviewers must report skills actually used, reference implementations inspected where relevant, verification performed, and unavailable tooling or skipped checks. If a reviewer discovers another applicable skill, it may read it within the same task, but must not take over another owner's stateful validation. Report material gaps rather than guessing.
 
 Before dispatch:
-- Respect project-specific delegation approval requirements. This invocation supplies approval for the three defined tasks unless project instructions explicitly require a separate confirmation.
+- Respect project-specific delegation approval requirements. This invocation supplies approval for the four core tasks and the conditional CDN/cache task when triggered, unless project instructions explicitly require a separate confirmation.
 - Discover executable, enabled agents with `subagent({ action: "list", capabilities: true })`; use only available runners. Read the current workflow guide before composing the fanout.
 - Launch the reviewers inside one top-level async subagent workflow. Do not silently substitute another execution protocol if launching fails. Report the failure, affected run, repository/cwd/ref, and any partial changes.
 - If delegation tooling is unavailable, explain the limitation and ask before substituting a sequential review.
@@ -89,7 +108,7 @@ Give each reviewer an explicit task containing:
 - Validation boundaries: follow project permissions, never touch production, and ask before restricted commands. Name the stateful-test and browser-validation owners; do not run competing suites against a shared database or interfere with another owner's browser session. Unrun checks must be labeled as such.
 - The finding contract below, plus instructions to report missing context or tooling blockers rather than guessing.
 
-Yield while the async reviewers run; use native completion notifications rather than polling. A narrow independent inspection is fine, but do not duplicate all three reviews.
+Yield while the async reviewers run; use native completion notifications rather than polling. A narrow independent inspection is fine, but do not duplicate the full reviewer pass.
 
 ## 4. Require evidence-backed findings
 
@@ -97,7 +116,7 @@ Yield while the async reviewers run; use native completion notifications rather 
 
 - Apply relevant project rules to the changed code explicitly. Check new assertions, options, abstractions, and styling against those rules—not only for runtime failures.
 - Verify assumptions that make changed code appear valid. For example, confirm that referenced styling or configuration exists, new options have actual callers, and tests protect behavior rather than incidental text.
-- Existing code is not proof of correctness. When this diff copies or expands an existing pattern, check that the pattern works and remains appropriate.
+- Existing code is not proof of correctness or product intent. Check copied patterns and distinguish implemented restrictions from approved requirements; report missing decision context rather than guessing.
 - Report concrete convention violations and worthwhile cleanup as P2, even when they cause no runtime defect. Explain the practical benefit; omit subjective preferences and speculative refactors.
 - A clean review needs no finding quota. Do not manufacture issues to demonstrate coverage.
 
@@ -116,7 +135,19 @@ If no findings qualify, say exactly `No issues found.` Still report verification
 
 ## 5. Verify and synthesize
 
-Wait for all three results before claiming a complete review. Recheck material findings against the pinned source, deduplicate overlaps, and resolve disagreements using evidence. Before accepting `No issues found.`, check whether reviewers supplied evidence for applicable convention and assumption checks; reading instructions alone is not evidence of applying them. Resolve material gaps through focused source inspection or report them as limitations. Do not blindly accept reviewer suggestions or apply fixes.
+Wait for all scheduled reviewer results before claiming a complete review. Recheck material findings against the pinned source, deduplicate overlaps, and resolve disagreements using evidence. Before accepting `No issues found.`, check whether reviewers supplied evidence for applicable convention and assumption checks; reading instructions alone is not evidence of applying them. Resolve material gaps through focused source inspection or report them as limitations. Do not blindly accept reviewer suggestions or apply fixes.
+
+### Calibrate recommendations before presenting fixes
+
+Apply this check to every PR and to reviewers' proposed remedies, not only code already in the diff. A technically valid concern does not by itself establish that the suggested policy or implementation is required.
+
+- Establish the actual user/operator outcome. Distinguish approved requirements from incidental promises in PR/docs text, proposed mechanisms and reviewer assumptions. Flag contradictions, but consider whether the promise itself needs clarification before recommending more machinery to enforce it.
+- For material recommendations, weigh concrete reachability, impact and mitigation cost. Check operational effects such as cache warmth/origin load, retention, background work, migrations/rollout locks and operator workload. Prefer the smallest complete fix using existing behavior; do not remove necessary functionality to simplify code.
+- Ask whether new controls/metrics expose useful decisions to the intended user, and whether proposed verification proves meaningful behavior rather than only inspecting implementation text.
+- Separate confirmed defects, product tradeoffs, pre-existing risks and unresolved intent. Recommend fix now, explicitly accept, defer separately or clarify intent as supported by evidence. Keep uncertain policy choices out of mandatory fixes and the blocking verdict unless the unresolved risk itself warrants blocking.
+- Do not equate rarity with harmlessness or invent frequency estimates. Assess severity, exposure, reversibility and security/data-integrity obligations independently. Cheap, useful validation, locking, transactions, audit trails and accessibility protections should not be rejected merely because their triggering case is uncommon.
+
+Keep this calibration brief in the final report; use Questions or assumptions and Feedback to ignore or defer for decisions that need product context. For cache-related recommendations, include why the chosen invalidation scope is sufficient without unnecessarily cooling unrelated pages.
 
 Provide one rendered Markdown review per PR:
 
