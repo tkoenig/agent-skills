@@ -125,6 +125,16 @@ Review live Hunk sessions using the skill bundled with the installed CLI. `skill
 ### heroku
 Manage Heroku apps, dynos, add-ons, config, and restarts via Heroku CLI/API.
 
+### icloud
+Safely work with iCloud Drive documents using a read-only, fail-closed local metadata checker. Project instructions own archive paths; explicit paths and optional `--root` keep checks scoped. Requires macOS `fileproviderctl` and Python 3.10+.
+
+```sh
+python3 skills/icloud/scripts/check-sync.py --root "/path/to/iCloud/archive" "/path/to/document"
+python3 -B -m unittest discover -s skills/icloud/tests -v
+```
+
+Exit codes: `0` expected local flags, `1` differing sync status, `2` unknown/incomplete. Does not read document contents, download files, or prove receipt on another device or Calendar/EventKit sync. See [`skills/icloud/SKILL.md`](skills/icloud/SKILL.md). Not globally activated; linking/installing remains a separate choice.
+
 ### omniwm-computer-use
 Local Pi adaptation inspired by the community OmniWM Computer Use skill.
 Provides exact-window CLI targeting, Dwindle configuration guidance, and a
