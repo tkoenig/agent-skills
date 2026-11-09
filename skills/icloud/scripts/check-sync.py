@@ -60,8 +60,10 @@ def resolve_target(path, cloud, root=None):
     return resolved
 
 
-def collect(paths, cloud, root=None):
+def collect(paths, cloud, root=None, skipped=None):
     files, errors = set(), []
+    if skipped is None:
+        skipped = set()
     discovered = 0
 
     def visit(path):
@@ -76,6 +78,11 @@ def collect(paths, cloud, root=None):
                 errors.append((path, "Pfad hat sich während der Prüfung geändert"))
                 return
             if stat.S_ISREG(mode):
+                # Finder view metadata is not a document. Do not relax checks
+                # for other hidden files, symlinks, directories or special files.
+                if path.name == ".DS_Store":
+                    skipped.add(path)
+                    return
                 files.add(path)
                 discovered += 1
             elif stat.S_ISDIR(mode):
@@ -122,7 +129,11 @@ def main(argv=None):
             raise ValueError("--root ist kein Ordner")
     except (OSError, RuntimeError, ValueError):
         parser.exit(2, "iCloud Drive oder --root fehlt/ist ungültig; nichts angelegt.\n")
-    files, errors = collect(args.paths, cloud, root)
+    skipped = set()
+    files, errors = collect(args.paths, cloud, root, skipped=skipped)
+    for path in sorted(skipped):
+        print(f"IGNORIERT  {str(path.relative_to(root or cloud))!r}: "
+              "Finder-Ansichtsmetadaten, nicht auf Sync geprüft")
     code = 2 if errors else 0
     for path, detail in errors:
         print(f"UNBEKANNT  {str(path)!r}: {detail}", file=sys.stderr)

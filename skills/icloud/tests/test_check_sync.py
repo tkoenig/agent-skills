@@ -68,6 +68,62 @@ class PathTests(unittest.TestCase):
         self.assertEqual(files, {self.file, doc})
         self.assertEqual(errors, [])
 
+    def test_ds_store_skipped_but_other_hidden_files_checked(self):
+        finder = self.root / ".DS_Store"
+        finder.write_text("synthetic")
+        other = self.root / ".DS_Store.backup"
+        other.write_text("synthetic")
+        nested = self.root / "nested"
+        nested.mkdir()
+        nested_finder = nested / ".DS_Store"
+        nested_finder.write_text("synthetic")
+        skipped = set()
+        self.assertEqual(check.collect([self.root], self.cloud, self.root, skipped),
+                         ({self.file, other}, []))
+        self.assertEqual(skipped, {finder, nested_finder})
+
+    def test_ds_store_only_is_not_success(self):
+        folder = self.root / "finder-only"
+        folder.mkdir()
+        finder = folder / ".DS_Store"
+        finder.write_text("synthetic")
+        for paths in ([folder], [finder], [self.file, finder]):
+            with self.subTest(paths=paths):
+                files, errors = check.collect(paths, self.cloud, self.root)
+                self.assertNotIn(finder, files)
+                self.assertTrue(errors)
+
+    def test_ds_store_symlink_and_special_file_not_skipped(self):
+        folder = self.root / "nested"
+        folder.mkdir()
+        finder = folder / ".DS_Store"
+        finder.symlink_to(self.file)
+        self.assertTrue(check.collect([self.root], self.cloud, self.root)[1])
+        fifo = self.root / ".DS_Store"
+        os.mkfifo(fifo)
+        self.assertTrue(check.collect([fifo], self.cloud, self.root)[1])
+
+    def test_ds_store_directory_still_scanned(self):
+        folder = self.root / ".DS_Store"
+        folder.mkdir()
+        doc = folder / "doc.md"
+        doc.write_text("synthetic")
+        self.assertEqual(check.collect([self.root], self.cloud, self.root),
+                         ({self.file, doc}, []))
+
+    def test_cli_reports_skip_without_inspecting_finder_metadata(self):
+        finder = self.root / ".DS_Store"
+        finder.write_text("synthetic")
+        output = io.StringIO()
+        with patch.object(check, "CLOUD", self.cloud), \
+             patch.object(check.shutil, "which", return_value="fileproviderctl"), \
+             patch.object(check, "inspect", return_value=(0, "synthetic")) as inspect, \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(check.main(["--root", str(self.root), str(self.root)]), 0)
+        inspect.assert_called_once_with(self.file)
+        self.assertIn("IGNORIERT", output.getvalue())
+        self.assertIn("nicht auf Sync geprüft", output.getvalue())
+
     def test_root_argument_symlink_allowed(self):
         link = self.base / "link"
         link.symlink_to(self.root, target_is_directory=True)
