@@ -24,7 +24,6 @@ global_prompts:
   - discuss-review
   - pr-review
   - pr-review-parallel
-  - claude-pr-review-parallel
   - recent-changes
   - sign-off
   - simplify
