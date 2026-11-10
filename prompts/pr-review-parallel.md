@@ -3,7 +3,7 @@ description: Review GitHub PRs with four core reviewers and conditional CDN revi
 argument-hint: "<PR-URL> [additional PR URLs or focus]"
 ---
 
-Review these GitHub PRs: $@
+Review these GitHub PRs: $ARGUMENTS
 
 By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when its trigger applies, the one additional CDN/cache reviewer defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
 

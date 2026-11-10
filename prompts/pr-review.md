@@ -2,7 +2,7 @@
 description: Review PRs from URLs with structured issue and code analysis
 ---
 
-You are given one or more GitHub PR URLs: $@
+You are given one or more GitHub PR URLs: $ARGUMENTS
 
 For each PR URL, do the following in order:
 

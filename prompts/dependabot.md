@@ -4,7 +4,7 @@ description: Review all open Dependabot PRs, research dependency changes, and re
 
 Review all open Dependabot PRs for the current GitHub repository and produce a researched merge-safety report.
 
-Optional extra instructions from the user: $@
+Optional extra instructions from the user: $ARGUMENTS
 
 ## 1. Read project conventions
 
