@@ -61,6 +61,32 @@ gh pr comment 55 --repo owner/repo --body "Updated screenshots" \
 
 Reference: [Attaching files with GitHub CLI](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli).
 
+## Issue Artifacts
+
+Use `gh issue artifact` (gh v2.103.0+) for durable, editable issue context: Markdown plans, research, root cause analyses, external links, and rendered HTML diagrams/prototypes. These are versioned issue documents, not GitHub Actions build artifacts. Use comments for conversation/status updates and `--attach` for images/videos in comments or descriptions.
+
+```bash
+# Inspect existing artifacts before creating another
+ gh issue artifact list 142 --repo owner/repo
+ gh issue artifact view 142 2 --repo owner/repo
+
+# Create a Markdown document, HTML preview, or external link
+ gh issue artifact create 142 './plan.md#Implementation plan' --repo owner/repo
+ gh issue artifact create 142 ./diagram.html --repo owner/repo
+ gh issue artifact create 142 https://example.com/research --name 'Research' --repo owner/repo
+
+# Update an existing document while preserving its version history
+ gh issue artifact edit 142 2 --body-file ./plan-v2.md --repo owner/repo
+```
+
+- Confirm the target repository, issue, and intended visibility; inspect documents and attachments for secrets/private information before uploading.
+- Prefer updating an existing artifact for the same purpose rather than creating duplicates. Do not publish local review notes or plans unless requested or authorized by the task.
+- Markdown documents support image/video uploads with `--attach`, as above. Artifacts can also be addressed by their GitHub URLs.
+- Other commands include `download` and `delete`; check their `--help` before use. Deletion requires explicit approval.
+- If the command is missing, check `gh --version` and request an update. If GitHub rejects access, report the permission/feature-availability limitation rather than switching to another host.
+
+Reference: [`gh issue artifact` manual](https://cli.github.com/manual/gh_issue_artifact).
+
 ## API for Advanced Queries
 
 The `gh api` command is useful for accessing data not available through other subcommands.
