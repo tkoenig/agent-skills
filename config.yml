@@ -10,6 +10,7 @@ global_skills:
   # Local and externally managed skills
   - github
   - hunk-review
+  - herdr-core
   - macos-software-management
   - omniwm-computer-use
   - safari-cli
