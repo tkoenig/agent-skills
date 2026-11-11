@@ -1,11 +1,11 @@
 ---
-description: Review GitHub PRs with four core reviewers and conditional CDN review
+description: Review GitHub PRs with four core reviewers and conditional concurrency and CDN reviews
 argument-hint: "<PR-URL> [additional PR URLs or focus]"
 ---
 
 Review these GitHub PRs: $ARGUMENTS
 
-By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when its trigger applies, the one additional CDN/cache reviewer defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
+By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when their triggers apply, the concurrency/data-safety split of the correctness reviewer and the one additional CDN/cache reviewer defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
 
 This is a review-only workflow. Do not edit source files, apply fixes, commit, push, merge, or post GitHub comments/reviews without explicit permission.
 
@@ -44,11 +44,19 @@ Default angles:
 4. **Cross-surface and representation consistency**
    Trace changed behavior through callers and alternate renderers: HTML/Markdown twins, search, profiles, bookmarks, recommendations, related rows and compact variants. Check attribution, display titles, date semantics, links and access messaging, especially logic isolated inside components. Require meaningful content parity, not identical layouts or Markdown equivalents of interactive controls. Distinguish newly introduced or expanded gaps from pre-existing omissions. For other stacks, inspect equivalent APIs, exports or feeds; report when none apply.
 
-Use these four core angles unless the user specifies others, plus the conditional CDN/cache angle below when applicable. Adapt their emphasis to the PR: UX/accessibility for UI changes, auth/privacy for security-sensitive work, accuracy and reader flow for documentation. Keep each reviewer focused.
+Use these four core angles unless the user specifies others, plus the conditional angles below when applicable. Adapt their emphasis to the PR: UX/accessibility for UI changes, auth/privacy for security-sensitive work, accuracy and reader flow for documentation. Keep each reviewer focused.
 
 All reviewers must apply relevant project conventions. For UI work, check semantic HTML, accessible names and label associations, and correct framework usage. Plain HTML labels are valid when correctly associated; framework helpers are not inherently required.
 
-### Conditional fifth reviewer: CDN/cache behavior
+### Conditional split: concurrency and data safety
+
+Before dispatch, split correctness into two reviewers when the diff contains non-trivial concurrency or data-integrity logic: explicit locking or lock ordering, transaction boundaries spanning several writers, callbacks or hooks that write other tables, or concurrent write paths whose interleaving matters. A routine migration or backfill alone is not a trigger; cover it in the single correctness reviewer. Otherwise keep one correctness reviewer. State the concrete trigger, or briefly state why it does not apply.
+
+1a. **Behavior and edge cases**: requirements, edge cases, write paths, runtime failures, security and data-integrity rules.
+
+1b. **Concurrency and data safety**: lock acquisition order and deadlock risk, transaction scope, re-entrant or recursive callbacks, stale in-memory state, migration locking and reversibility at production size, and backfill idempotence and safety. Report deadlock or retry risk separately from data corruption.
+
+### Conditional CDN/cache reviewer
 
 Before dispatch, add one independent CDN/cache reviewer when the diff changes cache headers, keys, tags, TTLs or purge calls; changes public visibility/access/publication/deletion for cached content; or moves rendering/data across cache boundaries. Do not add it merely because the project uses a CDN, or for cosmetic/copy-only changes. State the concrete trigger, or briefly state why it does not apply.
 
@@ -89,7 +97,7 @@ For other stacks and specialist changes, select equivalent available guidance, s
 - Normally assign behavioral/framework guidance to correctness, regression contracts to tests, and reference-pattern research plus relevant UI conventions to maintainability. Adjust ownership to the actual diff; skills equip the existing angles rather than replace them.
 - For relevant Rails architectural changes, have the maintainability reviewer use `real-world-rails` to inspect comparable implementations in actively maintained apps. Keep research bounded to the changed pattern, cite actual source, and explain relevance. External patterns are comparative evidence, not mandatory conventions; a different approach alone is not a finding.
 - Assign project representation guidance and relevant behavioral skills to the consistency reviewer; it owns source-level parity checks, not competing browser or stateful test execution.
-- Assign browser verification to one owner and stateful test execution to one owner, identifying any shared-state or resource constraints. Owners may be the same reviewer. Reading a skill is not execution of its checks.
+- Assign browser verification to one owner and stateful test execution to one owner, identifying any shared-state or resource constraints. Owners may be the same, and default to the coordinator (see below). Reading a skill is not execution of its checks.
 - Skills grant no additional authority. Reviewers must not follow skill instructions to delegate further, edit files, publish, access production, or perform restricted operations. Research reference repositories directly within the read-only boundary.
 - Reviewers must report skills actually used, reference implementations inspected where relevant, verification performed, and unavailable tooling or skipped checks. If a reviewer discovers another applicable skill, it may read it within the same task, but must not take over another owner's stateful validation. Report material gaps rather than guessing.
 
@@ -98,6 +106,16 @@ Before dispatch:
 - Discover executable, enabled agents with `subagent({ action: "list", capabilities: true })`; use only available runners. Read the current workflow guide before composing the fanout.
 - Launch the reviewers inside one top-level async subagent workflow. Do not silently substitute another execution protocol if launching fails. Report the failure, affected run, repository/cwd/ref, and any partial changes.
 - If delegation tooling is unavailable, explain the limitation and ask before substituting a sequential review.
+- Check each reviewer agent's tools. Read-only review agents may lack a shell; do not assign test, lint or browser execution to a reviewer that cannot run them.
+- Bound every reviewer by scope and time, not by a hard tool-call budget (hard tool budgets block reads and searches, which truncates legitimate evidence gathering). Set a run timeout of about 20 minutes. Choose reasoning effort per angle: more for concurrency/data-safety or other bounded deep reasoning, less for routine consistency or convention passes; avoid maximum effort by default. Run-level checkpoint options may not apply to workflow children, so put the wrap-up rule in the task.
+
+### Own validation in the coordinator
+
+Stateful validation (test suites, lint, database-backed checks) and browser verification each need exactly one owner. By default the coordinator owns them, because read-only reviewers usually cannot run commands and workflow scripts cannot run host commands.
+
+- The tests reviewer assesses coverage and names the exact commands that cover the changed behavior.
+- While reviewers run, the coordinator runs the affected tests itself, within project permissions: verify the target is a disposable test database first, run once, and do not compete with any other owner. Keep the test plan proportional: affected and related tests by default; run the full suite only when breadth or risk justifies it, not as a ritual. Add commands the tests reviewer names afterwards only when they cover something not yet run.
+- Delegate execution only to an agent that can run commands, with read-only instructions and separate approval when outside this invocation's approval.
 
 Give each reviewer an explicit task containing:
 - Its review angle and objective.
@@ -107,8 +125,15 @@ Give each reviewer an explicit task containing:
 - Read-only authority: no source edits, checkout changes, fixes, or publication; no further delegation.
 - Validation boundaries: follow project permissions, never touch production, and ask before restricted commands. Name the stateful-test and browser-validation owners; do not run competing suites against a shared database or interfere with another owner's browser session. Unrun checks must be labeled as such.
 - The finding contract below, plus instructions to report missing context or tooling blockers rather than guessing.
+- A wrap-up rule: after about 12 minutes, stop opening new lines of investigation and write the report, listing unfinished checks under limitations. A partial report is better than none.
 
 Yield while the async reviewers run; use native completion notifications rather than polling. A narrow independent inspection is fine, but do not duplicate the full reviewer pass.
+
+If a reviewer times out, fails, or returns no report:
+
+- Inspect the last tool calls and reasoning in its transcript to identify what it was investigating.
+- Prefer resuming the same reviewer once with its existing context, the specific remaining checks, and a short cap (about 10 minutes). This continues an already-approved reviewer task; ask first only if project instructions require separate approval or the resume would broaden its scope. Otherwise cover the angle with a focused inspection yourself.
+- Report the gap and how it was covered under Tests and validation. Never present an angle without a report as clean.
 
 ## 4. Require evidence-backed findings
 
@@ -129,7 +154,7 @@ For each finding, require:
 - Why this diff introduced, copied, expanded, or made the issue reachable.
 - A focused suggested fix.
 
-Filter on evidence, not severity. Do not restrict the first pass to blockers only. Keep speculative concerns and unresolved assumptions separate from confirmed findings. Classify existing bot or human review comments as VALID, STALE, INVALID, or OUT-OF-POLICY against the reviewed head; assign priority only to valid findings.
+Filter on evidence, not severity. Do not restrict the first pass to blockers only. Keep coverage suggestions distinct from defects: a missing test for correct code is not a fix-now finding unless it leaves a meaningful regression risk or contract unprotected. Keep speculative concerns and unresolved assumptions separate from confirmed findings. Classify existing bot or human review comments as VALID, STALE, INVALID, or OUT-OF-POLICY against the reviewed head; assign priority only to valid findings.
 
 If no findings qualify, say exactly `No issues found.` Still report verification performed and limitations. End with `Merge verdict: BLOCK`, `Merge verdict: OK`, or `Merge verdict: OK with notes`. Missing essential evidence must not be presented as a clean review.
 
