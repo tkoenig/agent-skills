@@ -28,7 +28,14 @@ This is a review-only workflow. Do not edit source files, apply fixes, commit, p
 
 ## 3. Launch independent reviewers
 
-Use fresh context, not forked context. Reviewers must inspect instructions, source, and the pinned diff directly; they must not rely on the main conversation or another reviewer's conclusions.
+Use fresh context, not forked context. Set `context: "fresh"` on each workflow child at the top level, not inside `options`; do not rely on an agent's default context. Reviewers must inspect instructions, source, and the pinned diff directly; they must not rely on the main conversation or another reviewer's conclusions.
+
+### Model and effort policy
+
+- Default every reviewer to `claude-code/claude-opus-5-5`, with an explicit model override on each child rather than inheriting the coordinator's or agent's model.
+- Use `high` effort for correctness (including behavior/edge cases) and concurrency/data safety; use `medium` for tests, maintainability, cross-surface consistency, and CDN/cache. Pass the effort through the model suffix, for example `claude-code/claude-opus-5-5:medium`, to override agent reasoning defaults too. Do not use maximum effort by default.
+- Use Fable only when the user explicitly requests it, for a focused second opinion. This prompt's reviewer approval does not authorize a Fable fanout or an automatic escalation to Fable.
+- Before launching, briefly state each review angle's resolved model, effort, and fresh-context setting. If the configured model is unavailable, report the blocker and ask before substituting another model.
 
 Default angles:
 
@@ -107,7 +114,7 @@ Before dispatch:
 - Launch the reviewers inside one top-level async subagent workflow. Do not silently substitute another execution protocol if launching fails. Report the failure, affected run, repository/cwd/ref, and any partial changes.
 - If delegation tooling is unavailable, explain the limitation and ask before substituting a sequential review.
 - Check each reviewer agent's tools. Read-only review agents may lack a shell; do not assign test, lint or browser execution to a reviewer that cannot run them.
-- Bound every reviewer by scope and time, not by a hard tool-call budget (hard tool budgets block reads and searches, which truncates legitimate evidence gathering). Set a run timeout of about 20 minutes. Choose reasoning effort per angle: more for concurrency/data-safety or other bounded deep reasoning, less for routine consistency or convention passes; avoid maximum effort by default. Run-level checkpoint options may not apply to workflow children, so put the wrap-up rule in the task.
+- Bound every reviewer by scope and time, not by a hard tool-call budget (hard tool budgets block reads and searches, which truncates legitimate evidence gathering). Set a run timeout of about 20 minutes. Apply the explicit model and effort policy above; do not let the selected agent's defaults override it. Run-level checkpoint options may not apply to workflow children, so put the wrap-up rule in the task.
 
 ### Own validation in the coordinator
 
