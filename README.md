@@ -173,6 +173,9 @@ Review and commit staged changes with verification, conventional commits, and op
 ### dependabot
 Review all open Dependabot PRs, research upstream dependency changes, and recommend merge safety.
 
+### is
+Verify a GitHub issue against the code and propose the smallest useful change. Analysis only.
+
 ### pr-review
 Structured PR review with issue analysis and code quality checks.
 

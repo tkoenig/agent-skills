@@ -22,6 +22,7 @@ global_prompts:
   - commit
   - dependabot
   - discuss-review
+  - is
   - pr-review
   - pr-review-parallel
   - recent-changes
