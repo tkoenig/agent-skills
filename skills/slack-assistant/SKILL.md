@@ -39,6 +39,7 @@ Load [references/commands.md](references/commands.md) for filters, pagination, t
 {baseDir}/scripts/slack-assistant search people 'Ada' --json
 {baseDir}/scripts/slack-assistant search channels 'engineering' --json
 {baseDir}/scripts/slack-assistant search messages 'release notes' --json
+{baseDir}/scripts/slack-assistant search messages --from=toms --limit=5 --json
 {baseDir}/scripts/slack-assistant conversations read --permalink='SLACK_MESSAGE_URL' --json
 {baseDir}/scripts/slack-assistant draft --recipient-id=C123 --message='Draft for review' --json
 {baseDir}/scripts/slack-assistant --workspace wollzelle draft --recipient-id=U123 --message='Hello' --json
@@ -72,6 +73,8 @@ For text-only sends, use a Markdown block instead:
 ```bash
 {baseDir}/scripts/slack-assistant send-approved --recipient-id=U123 --message='Approved summary for notifications and accessibility.' --blocks='[{"type":"markdown","text":"## Update\n\nApproved message."}]' --json
 ```
+
+For an approved group DM, use `send-approved --users=U123,U456` instead of `--recipient-id`, with the same message/block options. Resolve every recipient first and show the full group when requesting approval. SlackCLI opens or resumes one shared conversation, not separate DMs. `--users` accepts 1–8 recipients and cannot be combined with `--recipient-id` or `--permalink`; it is not available for drafts. A `--dry-run` previews the group without opening it or sending, but does not replace approval.
 
 The block and fallback must represent the same approved content; the example text above is only a placeholder. `send-approved` is an explicit workflow marker, not a technical proof of consent: only use it after the user approves. Normal `messages send` stays blocked. Other mutations remain blocked too. Report success only after the CLI confirms it; if delivery is uncertain, inspect the destination before retrying to avoid duplicates.
 

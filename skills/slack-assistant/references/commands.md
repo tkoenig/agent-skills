@@ -1,6 +1,6 @@
 # SlackCLI commands and recovery
 
-Checked against SlackCLI **0.11.0**. Adapted from the upstream [plugin reference](https://github.com/shaharia-lab/slackcli/blob/main/plugins/slackcli/skills/slackcli/references/commands.md) and [user guide](https://slackcli.dev/docs/user-guide/claude-code-plugin/). Installed `slackcli <group> <command> --help` wins if options differ.
+Checked against SlackCLI **0.19.1**. Adapted from the upstream [plugin reference](https://github.com/shaharia-lab/slackcli/blob/main/plugins/slackcli/skills/slackcli/references/commands.md) and [user guide](https://slackcli.dev/docs/user-guide/claude-code-plugin/). Installed `slackcli <group> <command> --help` wins if options differ.
 
 ## Invocation and scope
 
@@ -21,7 +21,7 @@ Commands below follow `{baseDir}/scripts/slack-assistant`, where `{baseDir}` is 
 | `conversations read --permalink=URL` | Read the linked message's thread. |
 | `conversations get CHANNEL TS` | Retrieve a message; also accepts `--permalink=URL`. Browser auth supports resolving thread replies. |
 | `conversations unread` | `--types=channels|dms|groups`; narrow if only one kind is needed. |
-| `search messages 'QUERY'` | `--in=CHANNEL_NAME`, `--from=USERNAME`, `--limit=20`, `--page=1`, `--sort=timestamp|score`, `--sort-dir=desc|asc` |
+| `search messages [QUERY]` | Query may be omitted with `--in=CHANNEL_NAME` or `--from=USERNAME`; also `--limit=20`, `--page=1`, `--sort=timestamp|score`, `--sort-dir=desc|asc` |
 | `search channels 'NAME'` / `search people 'NAME'` | Resolve names to IDs; `--limit=N`. Confirm ambiguous matches. |
 | `saved list` | `--limit=N`, `--state=saved|to_do|completed` |
 | `canvas list` / `canvas read FILE_OR_URL` | List: `--channel=C123`, `--limit=20`. Read also accepts `--channel=C123`. `--json` includes Markdown content. |
@@ -33,7 +33,8 @@ Use `--json` for all reads whose output you process. Commands not listed here, e
 
 Slack search operators work inside the query: `in:`, `from:`, `before:`, `after:`, `on:`, `during:`, `has:`, `is:`, `with:`. Prefer a channel, person or date bound instead of downloading broad histories.
 
-- `search messages` returns `total`, `page`, `pages` and `matches`. Follow `--page` only as far as the task needs.
+- Filter-only searches are supported, e.g. `search messages --from=toms --limit=5 --json`. Supply a query or at least one of `--in`/`--from`. The returned `query` includes the appended `in:`/`from:` filters.
+- `search messages` returns `total`, `page`, `pages` and `matches`. Follow `--page` only as far as the task needs. No matches can produce empty stdout even with `--json` (exit 0); handle that before parsing JSON.
 - `conversations list` returns `conversations`, `users` and `next_cursor`. Pass `--cursor` until it is empty/null when a complete list is required.
 - `conversations read` returns `messages` and `users`, with messages oldest first. Respect the requested limit/date range; do not describe a limited history as exhaustive.
 
@@ -58,9 +59,12 @@ draft --recipient-id=C_OR_U_ID --message='TEXT' --json
 draft --permalink=URL --message-file=/absolute/path/message.txt --json
 send-approved --recipient-id=C_OR_U_ID --message='APPROVED TEXT' --json
 send-approved --permalink=URL --message='APPROVED REPLY' --json
+send-approved --users=U123,U456 --message='APPROVED GROUP MESSAGE' --json
 ```
 
-A `U…` recipient opens a DM. For approved text-only sends, add `--blocks` with a `markdown` block containing the standard Markdown message; retain `--message`/`--message-file` as the notification/accessibility fallback. The examples above show targeting, not the default block payload. File attachments cannot accompany `--blocks`; use Slack markup with those sends and with drafts. Use `--message-file` for long fallback/draft text instead of fragile shell quoting. See the main skill for approval and attachments, and [block-kit.md](block-kit.md) for payload examples.
+A `U…` recipient opens a DM. `--users` opens or resumes a shared group DM for 1–8 user IDs, @handles or emails (comma- or space-separated). Resolve and show every recipient before approval; never substitute separate DMs. It cannot be combined with `--recipient-id` or `--permalink`, and drafts do not support it. `--dry-run` previews the user set without opening the conversation or posting; it does not authorize sending.
+
+For approved text-only sends, add `--blocks` with a `markdown` block containing the standard Markdown message; retain `--message`/`--message-file` as the notification/accessibility fallback. The examples above show targeting, not the default block payload. File attachments cannot accompany `--blocks`; use Slack markup with those sends and with drafts. Use `--message-file` for long fallback/draft text instead of fragile shell quoting. See the main skill for approval and attachments, and [block-kit.md](block-kit.md) for payload examples.
 
 | Result | JSON handles to retain | Report |
 | --- | --- | --- |
