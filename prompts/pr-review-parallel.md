@@ -1,11 +1,11 @@
 ---
-description: Review GitHub PRs with four core reviewers and conditional concurrency and CDN reviews
+description: Review GitHub PRs with four core reviewers and conditional concurrency, CDN and performance reviews
 argument-hint: "<PR-URL> [additional PR URLs or focus]"
 ---
 
 Review these GitHub PRs: $ARGUMENTS
 
-By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when their triggers apply, the concurrency/data-safety split of the correctness reviewer and the one additional CDN/cache reviewer defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
+By invoking this prompt, I explicitly approve the four core read-only reviewer tasks and, when their triggers apply, the concurrency/data-safety split of the correctness reviewer, and the additional CDN/cache and performance reviewers defined below. Do not ask for the same approval again. Any other delegation or edits require separate approval.
 
 This is a review-only workflow. Do not edit source files, apply fixes, commit, push, merge, or post GitHub comments/reviews without explicit permission.
 
@@ -33,7 +33,7 @@ Use fresh context, not forked context. Set `context: "fresh"` on each workflow c
 ### Model and effort policy
 
 - Default every reviewer to `claude-code/claude-opus-5-5`, with an explicit model override on each child rather than inheriting the coordinator's or agent's model.
-- Use `high` effort for correctness (including behavior/edge cases) and concurrency/data safety; use `medium` for tests, maintainability, cross-surface consistency, and CDN/cache. Pass the effort through the model suffix, for example `claude-code/claude-opus-5-5:medium`, to override agent reasoning defaults too. Do not use maximum effort by default.
+- Use `high` effort for correctness (including behavior/edge cases) and concurrency/data safety; use `medium` for tests, maintainability, cross-surface consistency, CDN/cache, and performance. Pass the effort through the model suffix, for example `claude-code/claude-opus-5-5:medium`, to override agent reasoning defaults too. Do not use maximum effort by default.
 - Use Fable only when the user explicitly requests it, for a focused second opinion. This prompt's reviewer approval does not authorize a Fable fanout or an automatic escalation to Fable.
 - Before launching, briefly state each review angle's resolved model, effort, and fresh-context setting. If the configured model is unavailable, report the blocker and ask before substituting another model.
 
@@ -78,6 +78,22 @@ Before dispatch, add one independent CDN/cache reviewer when the diff changes ca
 
 This reviewer uses the same pinned checkout, fresh-context/read-only boundaries, finding contract and top-level async workflow as the core reviewers. It reviews the cost of its own recommendations; the coordinator applies the proportionality check below to all reviewers' proposed fixes.
 
+### Conditional performance reviewer
+
+Before dispatch, add one independent performance reviewer when the diff adds or changes queries, associations, scopes, preloads, search/ranking/embedding calls, or per-item work in a public or high-traffic render path (listings, detail pages, cards, Markdown/JSON twins, feeds, sitemaps), or moves work into or out of lazy frames, fragments or background jobs. Do not add it for copy, styling, admin-only or low-traffic changes. State the concrete trigger, or briefly state why it does not apply.
+
+6. **Query and render cost**
+   Assess the cost the diff adds to affected requests, assuming they may render uncached (low hit rates, bots, cold caches).
+
+   - Compare against the merge base: report only new or expanded cost, not pre-existing cost. Name affected endpoints and variants (HTML, Markdown, JSON, frames).
+   - Check for N+1s, missing preloads, and unnecessary preloads on variants that do not use them; unbounded collections or missing limits; and expensive queries, search or ranking run inline where they could be deferred, bounded or reused.
+   - If the project runs automated N+1 detection (for example Bullet, Prosopite or `strict_loading`) in tests, rely on it for covered paths and focus on paths tests do not exercise. Otherwise check N+1 risk by reading the code.
+   - Support claims with source evidence and, where useful, local query counts or log measurements on the pinned checkout. Label estimates as such. No production probes or load tests; the coordinator retains stateful test execution.
+   - Recommend query-count regression tests only when the project already uses them and the path is hot enough to warrant one.
+   - Focus on origin cost; the CDN/cache reviewer owns cache semantics and invalidation.
+
+This reviewer uses the same pinned checkout, fresh-context/read-only boundaries, finding contract and top-level async workflow as the core reviewers. Weigh each recommendation's added complexity against the measured or clearly reachable cost; do not recommend speculative optimizations.
+
 ### Select applicable skills
 
 Before dispatch, inspect the diff, affected behavior, and PR claims. Discover available skills and explicitly assign relevant ones to the scheduled reviewer tasks, including their paths and why they apply. Select by behavior, not merely the project's technology stack; do not load every skill or add reviewers to cover the list.
@@ -109,7 +125,7 @@ For other stacks and specialist changes, select equivalent available guidance, s
 - Reviewers must report skills actually used, reference implementations inspected where relevant, verification performed, and unavailable tooling or skipped checks. If a reviewer discovers another applicable skill, it may read it within the same task, but must not take over another owner's stateful validation. Report material gaps rather than guessing.
 
 Before dispatch:
-- Respect project-specific delegation approval requirements. This invocation supplies approval for the four core tasks and the conditional CDN/cache task when triggered, unless project instructions explicitly require a separate confirmation.
+- Respect project-specific delegation approval requirements. This invocation supplies approval for the four core tasks and the conditional CDN/cache and performance tasks when triggered, unless project instructions explicitly require a separate confirmation.
 - Discover executable, enabled agents with `subagent({ action: "list", capabilities: true })`; use only available runners. Read the current workflow guide before composing the fanout.
 - Launch the reviewers inside one top-level async subagent workflow. Do not silently substitute another execution protocol if launching fails. Report the failure, affected run, repository/cwd/ref, and any partial changes.
 - If delegation tooling is unavailable, explain the limitation and ask before substituting a sequential review.
