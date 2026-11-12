@@ -113,12 +113,12 @@ Before dispatch:
 - Discover executable, enabled agents with `subagent({ action: "list", capabilities: true })`; use only available runners. Read the current workflow guide before composing the fanout.
 - Launch the reviewers inside one top-level async subagent workflow. Do not silently substitute another execution protocol if launching fails. Report the failure, affected run, repository/cwd/ref, and any partial changes.
 - If delegation tooling is unavailable, explain the limitation and ask before substituting a sequential review.
-- Check each reviewer agent's tools. Read-only review agents may lack a shell; do not assign test, lint or browser execution to a reviewer that cannot run them.
+- Require every reviewer to have `bash` for direct read-only Git and source inspection, with agent instructions that permit it. Check the resolved capabilities before dispatch; if shell/Git inspection is unavailable or prohibited, stop and report the configuration blocker rather than launching a source-only review. Each reviewer must inspect the pinned merge-base-to-head diff with Git; `watchdog_diff` only shows working-tree changes and is not a substitute. Shell access does not authorize edits, publication, or competing test, lint, database or browser execution.
 - Bound every reviewer by scope and time, not by a hard tool-call budget (hard tool budgets block reads and searches, which truncates legitimate evidence gathering). Set a run timeout of about 20 minutes. Apply the explicit model and effort policy above; do not let the selected agent's defaults override it. Run-level checkpoint options may not apply to workflow children, so put the wrap-up rule in the task.
 
 ### Own validation in the coordinator
 
-Stateful validation (test suites, lint, database-backed checks) and browser verification each need exactly one owner. By default the coordinator owns them, because read-only reviewers usually cannot run commands and workflow scripts cannot run host commands.
+Stateful validation (test suites, lint, database-backed checks) and browser verification each need exactly one owner. By default the coordinator owns them. Reviewers have shell access for read-only inspection, not permission to run competing validation; workflow scripts cannot run host commands.
 
 - The tests reviewer assesses coverage and names the exact commands that cover the changed behavior.
 - While reviewers run, the coordinator runs the affected tests itself, within project permissions: verify the target is a disposable test database first, run once, and do not compete with any other owner. Keep the test plan proportional: affected and related tests by default; run the full suite only when breadth or risk justifies it, not as a ritual. Add commands the tests reviewer names afterwards only when they cover something not yet run.
