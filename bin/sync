@@ -29,6 +29,7 @@ sync_category() {
   local target_dir="$3"     # e.g., ~/.pi/agent/skills
   local source_dir="$4"     # e.g., $SCRIPT_DIR/skills
   local is_file="$5"        # "file" for prompts (*.md), "dir" for skills/extensions
+  local fallback_dir="$6"   # optional, e.g., $SCRIPT_DIR/github/skills
   
   mkdir -p "$target_dir"
   
@@ -43,6 +44,9 @@ sync_category() {
     else
       item_path="$source_dir/$item"
       target_path="$target_dir/$item"
+      if [[ ! -e "$item_path" && -n "$fallback_dir" ]]; then
+        item_path="$fallback_dir/$item"
+      fi
     fi
     
     if [[ -e "$item_path" ]]; then
@@ -53,6 +57,8 @@ sync_category() {
       expected_items+=("$item")
     else
       echo "  ? $item (not found, skipping)"
+      # Still configured: never remove an existing link just because the source is missing
+      expected_items+=("$item")
     fi
   done
   
@@ -91,7 +97,7 @@ sync_category() {
 }
 
 # Sync each category
-sync_category "skills" "global_skills" "$SKILLS_DIR" "$SCRIPT_DIR/skills" "dir"
+sync_category "skills" "global_skills" "$SKILLS_DIR" "$SCRIPT_DIR/skills" "dir" "$SCRIPT_DIR/github/skills"
 sync_category "prompts" "global_prompts" "$PROMPTS_DIR" "$SCRIPT_DIR/prompts" "file"
 sync_category "extensions" "global_extensions" "$EXTENSIONS_DIR" "$SCRIPT_DIR/extensions" "dir"
 
