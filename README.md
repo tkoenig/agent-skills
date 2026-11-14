@@ -99,6 +99,9 @@ If the helper is unavailable, the agent can fall back to read-only session disco
 
 ## Skills
 
+### anachb
+Build AnachB map links and query current Austrian cycling, driving, public transport and walking estimates with the bundled Python CLI. No personal login or persistent credentials. Activated per project by symlink.
+
 ### css-cascade-debugging
 Debug CSS override issues involving Tailwind/DaisyUI cascade layers, specificity, `:where()`, generated CSS order, and computed browser styles.
 
