@@ -107,7 +107,7 @@ Debug CSS override issues involving Tailwind/DaisyUI cascade layers, specificity
 
 ### daisyui
 DaisyUI 5 components and Tailwind CSS 4 templates.  
-**Requires:** `daisyui-blueprint` MCP
+**Requires:** daisyUI Blueprint MCP (server name `daisyui`)
 
 ### github
 GitHub CLI integration (`gh` for issues, PRs, CI).  

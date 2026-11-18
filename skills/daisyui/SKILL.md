@@ -1,68 +1,41 @@
 ---
 name: daisyui
-description: Get DaisyUI component snippets, layouts, templates, and theme configuration for Tailwind CSS 4. Use when building UI with DaisyUI 5 components.
+description: Get DaisyUI component snippets, layouts, templates, and theme configuration for Tailwind CSS 4. Use when building or reviewing UI with DaisyUI 5 components.
 ---
 
 # DaisyUI Blueprint
 
-Retrieve authoritative DaisyUI 5 component syntax, setup guidance, and theme configuration via the `daisyui-blueprint` MCP server.
+Retrieve authoritative DaisyUI 5 component syntax, setup guidance, and theme configuration via the daisyUI Blueprint MCP server (Pi server name `daisyui`).
 
-## Calling from pi (pi-mcp-adapter)
+## Access from pi
 
-The server is configured globally in `~/.config/mcp/mcp.json` (email/license injected via fnox profile `daisyui` from the 1Password `Labs` vault item `daisyui License` (username → `EMAIL`, password → `LICENSE`)). Call tools through the `mcp` proxy tool; `args` is a JSON **string**:
+The server runs through Pi's built-in MCP support, configured in `~/.pi/agent/mcp.json` (email/license injected via fnox profile `daisyui` from the 1Password `Labs` vault item `daisyui License`). Tool names are `mcp__daisyui__<tool>`. Keep the server name short: Claude Code models reject tool names over 50 characters.
 
-```
-mcp({ tool: "daisyui_blueprint_daisyui_setup_expert", args: "{\"workflowId\":\"my-task\",\"projectRoot\":\"/abs/path\",\"SetupIDs\":[]}" })
-mcp({ tool: "daisyui_blueprint_daisyui_rules_enforcer", args: "{\"workflowId\":\"my-task\"}" })
-mcp({ tool: "daisyui_blueprint_daisyui_component_syntax_expert", args: "{\"workflowId\":\"my-task\",\"SnippetIDs\":[\"components/button\",\"components/card\"]}" })
-```
+- **Main session** (server exposure `codemode`): call from a `codemode` script, e.g. `await tools.mcp__daisyui__daisyui_setup_expert({ workflowId, projectRoot })`. Use `describeTool("mcp__daisyui__<tool>")` for the current schema.
+- **Subagents:** add `mcp:daisyui` to the agent's `tools` (background runs); the tools then appear as direct tools (on `claude-code` models with an extra `mcp__pi__` prefix, e.g. `mcp__pi__mcp__daisyui__daisyui_setup_expert`). If they are missing, say so and fall back to the published daisyUI package CSS instead of guessing syntax.
 
-Discover tool names/schemas on demand with `mcp({ search: "daisyui" })`.
+The tool schemas are authoritative; follow each tool's returned `next step` and `structuredContent`.
 
 ## Workflow (stateful, ordered)
 
-The server tracks per-task state by `workflowId`. Choose one ID per task (pattern `^[a-z0-9][a-z0-9._-]{0,127}$`, one per parallel agent), reuse the exact value across all calls.
+The server tracks state per `workflowId` (pattern `^[a-z0-9][a-z0-9._-]{0,127}$`). Use one ID per agent and cohesive task, reuse it exactly, and start a new one for parallel agents or design variants.
 
-1. **`daisyui_blueprint_daisyui_setup_expert`** — MANDATORY first step.
-   - `workflowId` (string), `projectRoot` (absolute path, bound to the workflowId once)
-   - `SetupIDs` (array, max 6, may be `[]`; enum: `setup/install`, `setup/config`, `setup/themes`, `setup/colors`, `setup/icons`, `setup/fonts`)
-2. **`daisyui_blueprint_daisyui_rules_enforcer`** — MANDATORY second. Params: `workflowId` only. Returns the DaisyUI usage rules.
-3. Optional: `daisyui_blueprint_daisyui_creative_director`, `daisyui_blueprint_daisyui_page_architect`.
-4. **`daisyui_blueprint_daisyui_component_syntax_expert`** — MANDATORY before writing or revising DaisyUI markup.
-   - `SnippetIDs` (1–50, enum): ~69 component IDs like `components/button`, plus block IDs like `blocks/hero-section`, `blocks/bento-grid`
-   - Returns authoritative markup syntax/snippets. The server validates IDs and reports valid values on error.
-5. **`daisyui_blueprint_daisyui_quality_inspector`** — read-only final check on written files.
-   - `auditType`: `mcp_changes` | `user_request`
-   - `files` (1–300): `{path,startLine,endLine}`, `{path}` (user_request only), or `{path,changeKind:created|replaced|deleted(+anchorLine)}` — project-relative paths
-   - Returns a single action: fix-and-rerun, manual_review, report, stop, or finalize. Not a replacement for diff/build/test/browser verification.
+1. **`daisyui_setup_expert`**: mandatory first. `workflowId`, `projectRoot` (absolute path), plus optional boolean guidance flags (`install`, `config`, `themes`, `colors`, `icons`, `fonts`, `charts`).
+2. **`daisyui_rules_enforcer`**: mandatory second. `workflowId` only.
+3. **`daisyui_creative_director`**, **`daisyui_page_architect`**: mandatory for a new complete page or screen, optional otherwise, skipped in `convert_*` workflows.
+4. **`daisyui_component_syntax_expert`**: mandatory before writing or revising markup. `SnippetIDs` such as `components/button`, `blocks/hero-section`. Returns bounded batches; repeat with the remaining IDs it lists.
+5. **`daisyui_quality_inspector`**: read-only check on written files. `auditIntent` (`fix_changes` | `report_only`) and `files` (project-relative paths with line ranges or `changeKind`). Not a replacement for diff/build/test/browser verification.
 
-**convert_* workflows** (`daisyui_blueprint_convert_figma_to_daisyui`, `..._screenshot_to_daisyui`, `..._tailwind_to_daisyui`, `..._bootstrap_to_daisyui`, `..._picture_to_theme`): skip the optional tools AND the quality inspector, but still require setup_expert → rules_enforcer → component_syntax_expert (with every component ID used).
+**Convert workflows** (`convert_figma_to_daisyui`, `convert_screenshot_to_daisyui`, `convert_tailwind_to_daisyui`, `convert_bootstrap_to_daisyui`, `convert_picture_to_theme`) still require setup → rules → component syntax for every component used.
 
-## Component IDs
+## Reviews
 
-IDs are `components/<name>`; common ones:
-
-accordion, alert, avatar, badge, breadcrumbs, button, calendar, card,
-carousel, chat, checkbox, collapse, countdown, diff, divider, dock,
-drawer, dropdown, fab, fieldset, file-input, filter, footer, hero,
-hover-3d, hover-gallery, indicator, input, join, kbd, label, link,
-list, loading, mask, menu, mockup-browser, mockup-code, mockup-phone,
-mockup-window, modal, navbar, pagination, progress, radial-progress,
-radio, range, rating, select, skeleton, stack, stat, status, steps,
-swap, tab, table, text-rotate, textarea, theme-controller, timeline,
-toast, toggle, validator
-
-**Note:** `tooltip` is missing from the MCP but exists in DaisyUI 5. Use:
-```html
-<div class="tooltip" data-tip="hello"><button class="btn">Hover</button></div>
-<div class="tooltip tooltip-right tooltip-primary" data-tip="info">...</div>
-```
-Classes: tooltip, tooltip-content, tooltip-top/bottom/left/right, tooltip-open, tooltip-{color}
+For reviewing DaisyUI changes, `setup_expert` → `rules_enforcer` → `component_syntax_expert` for the components touched gives authoritative class names and structure to compare against. Use `quality_inspector` with `auditIntent: "report_only"`. None of these tools edit files.
 
 ## When to Use
 
-- Building new UI components with DaisyUI
+- Building or reviewing UI components with DaisyUI
 - Need the correct class names and HTML structure
-- Setting up Tailwind 4 + DaisyUI 5 theme configuration (`SetupIDs: ["setup/themes"]`)
+- Setting up Tailwind 4 + DaisyUI 5 themes (`themes: true`)
 - Converting Figma/screenshots/Tailwind/Bootstrap markup to DaisyUI
 - Auditing written DaisyUI files before finishing a UI task
