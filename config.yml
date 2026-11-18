@@ -13,6 +13,7 @@ global_skills:
   - herdr-core
   - macos-software-management
   - omniwm-computer-use
+  - pi-session-query
   - safari-cli
   - skill-manager
   - slack-assistant
