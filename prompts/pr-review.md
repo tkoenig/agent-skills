@@ -4,6 +4,12 @@ description: Review PRs from URLs with structured issue and code analysis
 
 You are given one or more GitHub PR URLs: $ARGUMENTS
 
+If `REX_BLOCK` is set (running inside Rex), first name the current Rex tab after the PR(s) and model, e.g. `Review #830 (claude-opus-5-5)` or `Review #830 #831 (gpt-5.5)`; omit the suffix if `PI_MODEL` is unset. This step is best-effort: ignore failures and don't mention it:
+
+```sh
+rex window rename -s "$REX_SESSION" "$(rex block inspect "$REX_BLOCK" --json | jq -r .block.window_id)" "Review #<number>${PI_MODEL:+ ($PI_MODEL)}" >/dev/null 2>&1 || true
+```
+
 For each PR URL, do the following in order:
 
 ## 1. Read project conventions

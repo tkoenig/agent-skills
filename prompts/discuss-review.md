@@ -11,3 +11,4 @@ Let's discuss your review findings one at a time. Present the first finding, the
 - Stay concise.
 - No edits.
 - After discussing all findings, ask whether to post a review summary.
+- When posting, end the review body with `pi session: $PI_SESSION_ID ($PI_MODEL)`, using the actual values. For inline comments, include it once in the review summary, not on each comment.

@@ -11,6 +11,8 @@ This is a review-only workflow. Do not edit source files, apply fixes, commit, p
 
 ## 1. Establish the review target
 
+- If `REX_BLOCK` is set (running inside Rex), name the current Rex tab after the PR(s) and model, e.g. `Review #830 (claude-opus-5-5)` or `Review #830 #831 (gpt-5.5)`; omit the suffix if `PI_MODEL` is unset. This step is best-effort: ignore failures and don't mention it:
+  `rex window rename -s "$REX_SESSION" "$(rex block inspect "$REX_BLOCK" --json | jq -r .block.window_id)" "Review #<number>${PI_MODEL:+ ($PI_MODEL)}" >/dev/null 2>&1 || true`
 - Read the project's AGENTS.md and applicable nested instructions. Load the GitHub and pi-subagents skills when available.
 - Resolve each PR's repository and read its title, body, author, base/head refs and SHAs, commits, changed files, comments, reviews, and checks using `gh`.
 - Fetch inline review comments separately with the paginated pulls/<number>/comments API; `gh pr view --json comments,reviews` does not include them all. Paginate other collections as needed.
