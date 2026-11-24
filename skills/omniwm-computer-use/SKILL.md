@@ -81,16 +81,30 @@ Never resize a user's window merely to make a screenshot or click easier.
 
 The tracked configuration is `omniwm/settings.toml` in the dotfiles repository,
 linked at `~/.config/omniwm/settings.toml`. Read its current contents before editing
-or sending hotkeys: GUI edits write back and bindings can change. All nine
-workspaces were configured for `dwindle`, not Niri. Never run AeroSpace alongside
-OmniWM. Do not change macOS privacy permissions or disable SIP.
+or sending hotkeys: GUI edits write back and bindings can change. Never run
+AeroSpace alongside OmniWM. Do not change macOS privacy permissions or disable SIP.
+
+Workspaces (agreed 2026-10-21; separate work and private contexts):
+
+| WS | Purpose | Layout | App rules |
+|---|---|---|---|
+| 1 | General/default | dwindle | – |
+| 2 | Development/current project | dwindle | – |
+| 3 | Work communication | niri (tabbed) | Slack, Mail, bob web app |
+| 4 | Private | niri (tabbed) | Messages |
+| 5 | Maker | dwindle | Bambu Studio |
+
+Mail holds work and private accounts; OmniWM cannot route by account, so it
+stays on 3. Only pin apps dedicated to one context.
 
 Configured navigation:
 
-- Command + arrows: focus.
-- Command + Shift + arrows: move.
-- Command + 1–9: workspace.
-- Command + Shift + 1–9: send window to workspace.
+- Option + arrows: focus.
+- Option + Shift + arrows: move.
+- Option + 1–5: workspace.
+- Option + Shift + 1–5: send window to workspace.
+- Option + 6–9 are deliberately unassigned (German layout characters).
+- Option + Tab: previous window.
 - Option + Return: OmniWM fullscreen, not a native macOS Space.
 - Option + Shift + O: overview.
 - Option + Shift + L: switch the active workspace's layout (can accidentally enable Niri).
@@ -104,7 +118,12 @@ For authorized layout changes, prefer explicit CLI commands:
 "$CTL" command toggle-split
 "$CTL" command preselect down
 "$CTL" command switch-workspace 2
+"$CTL" command move-to-workspace 4   # moves the FOCUSED window
 ```
+
+`window focus <id>` returns before focus settles. Before a focused-window
+command such as `move-to-workspace`, poll `query focused-window` until it
+reports the target ID; otherwise the previously focused window moves.
 
 Dwindle recursively splits a focused tile when a window opens. `preselect down`
 controls where the next window goes; it does not move an existing one. Do not use
