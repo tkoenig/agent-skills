@@ -93,6 +93,7 @@ Workspaces (agreed 2026-10-21; separate work and private contexts):
 | 3 | Work communication | niri (tabbed) | Slack, Mail, bob web app |
 | 4 | Private | niri (tabbed) | Messages |
 | 5 | Maker | dwindle | Bambu Studio |
+| 6 | Agent browser | dwindle | Safari Technology Preview (Safari MCP) |
 
 Mail holds work and private accounts; OmniWM cannot route by account, so it
 stays on 3. Only pin apps dedicated to one context.
@@ -103,7 +104,7 @@ Configured navigation:
 - Option + Shift + arrows: move.
 - Option + 1–5: workspace.
 - Option + Shift + 1–5: send window to workspace.
-- Option + 6–9 are deliberately unassigned (German layout characters).
+- Option + 6–9 are deliberately unassigned (German layout characters); reach workspace 6 via the overview.
 - Option + Tab: previous window.
 - Option + Return: OmniWM fullscreen, not a native macOS Space.
 - Option + Shift + O: overview.
