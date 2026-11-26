@@ -33,7 +33,7 @@ Examples:
   $0 install
   $0 list --schema
   $0 call navigate_to_url url=https://example.com
-  $0 call evaluate_javascript script='document.title'
+  $0 call evaluate_javascript expression='return document.title'
   $0 call screenshot
 EOF
 }

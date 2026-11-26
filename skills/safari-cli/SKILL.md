@@ -13,8 +13,9 @@ Use native Safari MCP for browser testing and debugging whenever it is available
 | --- | --- |
 | Safari 27 beta or Safari Technology Preview, debugging/testing | Safari MCP (native `mcp__safari__*` tools via `codemode`; fallback `scripts/mcp.sh`) |
 | DOM interactions, console, network, viewport, media emulation, page screenshots | Safari MCP |
+| Reading pages that `fetch_content` cannot load (403, cookie walls, JS-heavy) | Safari MCP `get_page_content` |
 | Stable Safari without `safaridriver --mcp` | AppleScript scripts |
-| Readable extraction from an article | `safari-content.sh` |
+| Readable extraction from an article on stable Safari | `safari-content.sh` |
 | Browser-chrome screenshot on stable Safari | `safari-screenshot.sh` |
 
 Before testing a local app, start it and navigate Safari to its local URL. Confirm with the user before any interaction that changes remote state: submitting forms, purchases, destructive actions, or entering sensitive data.
@@ -40,13 +41,26 @@ await tools.mcp__safari__list_network_requests({});
 await tools.mcp__safari__get_network_request({ request_id: "..." });
 ```
 
+`get_page_content`, `evaluate_javascript`, `screenshot`, and `wait_for_navigation` take no tab handle and act on the active tab; call `switch_tab` first. `create_tab` returns `{"handle": "page-<UUID>"}` as JSON text in `content[0].text`; parse it instead of matching a UUID. Read a page into a file and close the tab afterwards:
+
+```js
+const tab = await tools.mcp__safari__create_tab({});
+const handle = JSON.parse(tab.content[0].text).handle;
+await tools.mcp__safari__switch_tab({ handle });
+await tools.mcp__safari__navigate_to_url({ handle, url });
+await tools.mcp__safari__get_page_content({ format: "markdown", region: "entire_page", maxWordsPerParagraph: 400, savePath: "/tmp/page.json" });
+await tools.mcp__safari__close_tab({ handle });
+```
+
+The saved file is JSON; extract the text with `jq -r .content`.
+
 Available tools include tab creation/switching/closing, navigation, page information and content extraction, JavaScript evaluation, sequential page interactions, dialogs, console and network inspection, screenshots, viewport sizing, CSS media emulation, and navigation waiting. Use `searchTools("safari <keyword>")` or `describeTool` before calling an unfamiliar tool to verify its parameters.
 
 ### Preserve the user's focus
 
-Read and follow the `omniwm-computer-use` skill before browser automation on this Mac. Do not explicitly activate Safari or switch tabs unnecessarily. Prefer MCP page/content and DOM tools over foreground GUI automation; use a tab handle where supported rather than switching tabs first.
+Safari has no headless mode; `safaridriver` exposes no headless or background option. Verified on 2026-11-26 with Safari Technology Preview: `create_tab`, `switch_tab`, `navigate_to_url`, `get_page_content`, and `close_tab` do not take focus, and an OmniWM app rule places STP windows on workspace 6, so no focus capture/restore is needed for these calls. Hiding STP does not help; MCP calls unhide it.
 
-The native Safari MCP tool schemas and `safaridriver --help` expose no background/no-focus option. Do not assume MCP calls cannot activate Safari; which operations steal focus on the installed build has not been verified. When an operation may activate Safari, capture the current focused window immediately before it and restore that exact window immediately afterwards, including on errors, following the OmniWM skill. Re-capture for each operation, and do not hold a focus lease while waiting for the user. Focus restoration is only a mitigation: it cannot prevent a brief activation flash. Do not hide, move, resize, or close the user's existing windows to work around this.
+Other operations are unverified. Read the `omniwm-computer-use` skill before GUI or foreground automation, and when an operation may activate Safari, capture the focused window before it and restore it afterwards. Do not hide, move, resize, or close the user's existing windows to work around this.
 
 Safari's MCP server runs locally. Captured page content, screenshots, network data, and console logs are sent to the MCP client/agent, so use it only with trusted agents and pages that do not expose secrets.
 
@@ -70,7 +84,7 @@ Safari tools must share one browser session for tabs, console logs, and network 
 
 ```bash
 {baseDir}/scripts/mcp.sh call navigate_to_url url=https://example.com
-{baseDir}/scripts/mcp.sh call evaluate_javascript script='document.title'
+{baseDir}/scripts/mcp.sh call evaluate_javascript expression='return document.title'
 {baseDir}/scripts/mcp.sh call list_network_requests
 {baseDir}/scripts/mcp.sh call browser_console_messages
 {baseDir}/scripts/mcp.sh call screenshot
